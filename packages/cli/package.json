@@ -1,0 +1,24 @@
+{
+  "name": "@pyra/cli",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  
+  "bin": {
+    "pyra": "./dist/bin.mjs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsup src/bin.ts --dts --format esm --out-dir dist",
+    "dev:run": "tsx src/bin.ts",
+    "dev:link": "pnpm build && pnpm link -g"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.17.1",
+  "dependencies": {
+    "@pyra/shared": "workspace:*",
+    "commander": "^12.1.0"
+  }
+}

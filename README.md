@@ -3,8 +3,7 @@
 > ⚡ Ignite your frontend.  
 > A next-gen build tool for blazing-fast web development.
 
-Pyra.js is a lightweight, modern bundler designed for speed, simplicity, and creative flow.  
-TypeScript-first. Zero config. Built for developers who love efficiency and elegance.
+Pyra.js is a lightweight, modern bundler designed for speed, simplicity, and creative flow. TypeScript-first. Zero config. Built for developers who love efficiency and elegance.
 
 ---
 
