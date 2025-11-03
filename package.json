@@ -1,0 +1,22 @@
+{
+  "name": "pyrajs",
+  "version": "0.0.0",
+  "description": "Pyra.js is a lightweight, modern bundler designed for speed, simplicity, and creative flow. TypeScript-first. Zero config. Built for developers who love efficiency and elegance.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "pnpm -r --filter ./packages/* run build",
+    "clean": "git clean -xfd -e node_modules",
+    "lint": "echo \"(add eslint later)\"",
+    "typecheck": "tsc -b"
+  },
+  "keywords": [],
+  "author": "Nathaniel Paz",
+  "license": "ISC",
+  "packageManager": "pnpm@10.17.1",
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
