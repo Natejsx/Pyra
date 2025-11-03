@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { log } from '@pyra/shared';
+import { DevServer } from '@pyra/core';
 
 const program = new Command();
 
@@ -14,10 +15,38 @@ program
   .description('Start development server with hot module replacement')
   .option('-p, --port <number>', 'Port to run dev server on', '3000')
   .option('-o, --open', 'Open browser on server start')
-  .action((options) => {
-    log.info(`Starting dev server on port ${options.port}...`);
-    log.warn('Dev server not implemented yet - coming soon');
-    // TODO: Import and call dev server from @pyra/core
+  .action(async (options) => {
+    try {
+      const port = parseInt(options.port, 10);
+      const server = new DevServer({ port });
+
+      await server.start();
+
+      // Handle graceful shutdown
+      let isShuttingDown = false;
+
+      const shutdown = () => {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
+
+        log.info('\nShutting down dev server...');
+
+        server.stop()
+          .then(() => {
+            process.exit(0);
+          })
+          .catch((error) => {
+            log.error(`Error during shutdown: ${error}`);
+            process.exit(1);
+          });
+      };
+
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+    } catch (error) {
+      log.error(`Failed to start dev server: ${error}`);
+      process.exit(1);
+    }
   });
 
 program
