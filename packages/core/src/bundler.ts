@@ -51,15 +51,49 @@ export async function bundleFile(
         '.tsx': 'tsx',
         '.jsx': 'jsx',
         '.js': 'js',
+        '.css': 'css',
       },
       logLevel: 'silent',
       absWorkingDir: root,
+      // Need outdir even with write:false so esbuild knows how to structure CSS output
+      outdir: 'dist',
       // External packages can be configured here if needed
       // external: [],
     });
 
     if (result.outputFiles && result.outputFiles.length > 0) {
-      const code = result.outputFiles[0].text;
+      // esbuild may generate multiple files (e.g., .js and .css)
+      // We need to find the JS file and inject any CSS into it
+      let jsCode = '';
+      let cssCode = '';
+
+      for (const file of result.outputFiles) {
+        if (file.path.endsWith('.js')) {
+          jsCode = file.text;
+        } else if (file.path.endsWith('.css')) {
+          cssCode = file.text;
+        }
+      }
+
+      // If no separate JS file found, use the first output
+      if (!jsCode && result.outputFiles.length > 0) {
+        jsCode = result.outputFiles[0].text;
+      }
+
+      // If we have CSS, inject it into the JS by prepending CSS injection code
+      let code = jsCode;
+      if (cssCode) {
+        const cssInjection = `
+// Inject CSS
+(function() {
+  const style = document.createElement('style');
+  style.textContent = ${JSON.stringify(cssCode)};
+  document.head.appendChild(style);
+})();
+`;
+        code = cssInjection + '\n' + jsCode;
+      }
+
       const compileTime = Date.now() - startTime;
       const size = Buffer.byteLength(code, 'utf-8');
 

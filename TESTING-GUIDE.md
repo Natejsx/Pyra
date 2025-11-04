@@ -173,7 +173,7 @@ npm link
 
 ## Understanding the Linking
 
-```
+```md
 ┌─────────────────────────────────────────────┐
 │  Global npm directory                        │
 │  /c/Users/YOU/AppData/Roaming/npm/          │
