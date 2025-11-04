@@ -1,7 +1,7 @@
 {
-  "name": "@pyra/shared",
-  "version": "0.0.1",
-  "description": "",
+  "name": "pyrajs-shared",
+  "version": "0.0.2",
+  "description": "Shared utilities and types for Pyra.js",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,14 +11,33 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsup src/index.ts --dts --format esm --out-dir dist"
+    "build": "tsup src/index.ts --dts --format esm --out-dir dist",
+    "prepublishOnly": "pnpm build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.17.1",
+  "keywords": [
+    "pyra",
+    "utilities",
+    "shared",
+    "types"
+  ],
+  "author": "Nathaniel Paz",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Simpleboi/Pyra",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://github.com/Simpleboi/Pyra#readme",
+  "bugs": {
+    "url": "https://github.com/Simpleboi/Pyra/issues"
+  },
   "dependencies": {
     "picocolors": "^1.1.1"
   }

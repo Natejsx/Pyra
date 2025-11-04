@@ -34,7 +34,7 @@ function generatePackageJson(projectName: string): string {
       build: 'pyra build',
     },
     devDependencies: {
-      '@pyra/cli': '^0.0.1',
+      'pyrajs-cli': '^0.0.3',
     },
   };
 
@@ -90,7 +90,7 @@ if (import.meta.hot) {
  * Generate pyra.config.js content
  */
 function generatePyraConfig(): string {
-  return `import { defineConfig } from '@pyra/cli';
+  return `import { defineConfig } from 'pyrajs-cli';
 
 export default defineConfig({
   // Entry point

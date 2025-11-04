@@ -1,6 +1,6 @@
 {
-  "name": "@pyra/core",
-  "version": "0.0.1",
+  "name": "pyrajs-core",
+  "version": "0.0.2",
   "description": "Core bundler engine for Pyra.js",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,16 +11,39 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --out-dir dist",
-    "dev": "tsup src/index.ts --dts --format esm --out-dir dist --watch"
+    "dev": "tsup src/index.ts --dts --format esm --out-dir dist --watch",
+    "prepublishOnly": "pnpm build"
   },
-  "keywords": ["bundler", "build-tool", "dev-server"],
+  "keywords": [
+    "pyra",
+    "bundler",
+    "build-tool",
+    "dev-server",
+    "esbuild"
+  ],
   "author": "Nathaniel Paz",
-  "license": "ISC",
-  "packageManager": "pnpm@10.17.1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Simpleboi/Pyra",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/Simpleboi/Pyra#readme",
+  "bugs": {
+    "url": "https://github.com/Simpleboi/Pyra/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
-    "@pyra/shared": "workspace:*",
+    "pyrajs-shared": "^0.0.2",
     "chokidar": "^4.0.3",
     "esbuild": "^0.24.0",
     "ws": "^8.18.0"

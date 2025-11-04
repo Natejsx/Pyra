@@ -300,12 +300,14 @@ Happy coding! 🔥
 ```
 
 **With Override:**
-```
+
+```bash
 [pyra] Using package manager override: bun
 ```
 
 **Fallback:**
-```
+
+```bash
 [pyra] No package manager detected, falling back to npm
 ```
 
@@ -313,7 +315,7 @@ Happy coding! 🔥
 
 ### Detection Logic Flow
 
-```
+```bash
 detectPM(cwd, override?)
   │
   ├─ override provided? → Use override
@@ -349,6 +351,7 @@ function isYarnBerry(version?: string): boolean {
 ### Windows Compatibility
 
 All spawned commands use:
+
 ```typescript
 spawn(cmd, args, {
   shell: true,  // Required for Windows
@@ -358,7 +361,7 @@ spawn(cmd, args, {
 
 ## 📝 Files Created
 
-```
+```md
 packages/cli/src/
 ├── pm.ts                          # Package manager detection (270 lines)
 ├── init.ts                        # Project initialization (240 lines)
@@ -383,7 +386,7 @@ packages/cli/
 ✅ **Zero Dependencies** - Only uses Node.js built-ins
 ✅ **Production Ready** - Clean, commented, testable code
 
-## 🎉 Ready to Use!
+## 🎉 Ready to Use
 
 ```bash
 # Build the CLI
