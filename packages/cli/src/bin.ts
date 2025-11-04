@@ -4,6 +4,8 @@ import { log, loadConfig, getPort, getOutDir } from '@pyra/shared';
 import { DevServer, build } from '@pyra/core';
 import { input, select } from '@inquirer/prompts';
 import { scaffold, type Template, type Language } from './scaffold.js';
+import { initProject, validateProjectName } from './init.js';
+import type { PMName } from './pm.js';
 
 
 const program = new Command();
@@ -101,10 +103,53 @@ program
   });
 
 program
+  .command('create [project-name]')
+  .description('Create a new Pyra.js project (simple setup)')
+  .option('--pm <manager>', 'Package manager to use (npm, pnpm, yarn, bun)')
+  .option('--skip-install', 'Skip dependency installation')
+  .action(async (projectNameArg, options) => {
+    try {
+      // Prompt for project name if not provided
+      const projectName = projectNameArg || await input({
+        message: 'Project name:',
+        default: 'my-pyra-app',
+        validate: (value) => {
+          const result = validateProjectName(value);
+          return result === true ? true : result;
+        },
+      });
+
+      // Validate package manager override if provided
+      const pmOverride = options.pm as PMName | undefined;
+      if (pmOverride && !['npm', 'pnpm', 'yarn', 'bun'].includes(pmOverride)) {
+        log.error(`Invalid package manager: ${pmOverride}`);
+        log.error('Valid options: npm, pnpm, yarn, bun');
+        process.exit(1);
+      }
+
+      // Initialize the project
+      await initProject({
+        projectName: projectName.trim(),
+        pm: pmOverride,
+        skipInstall: options.skipInstall,
+      });
+
+    } catch (error) {
+      if (error instanceof Error) {
+        log.error(`Failed to create project: ${error.message}`);
+      } else {
+        log.error('Failed to create project');
+      }
+      process.exit(1);
+    }
+  });
+
+program
   .command('init [project-name]')
-  .description('Initialize a new Pyra.js project')
+  .description('Initialize a new Pyra.js project (with templates)')
   .option('-t, --template <name>', 'Project template (vanilla, react)')
   .option('-l, --language <lang>', 'Language (typescript, javascript)')
+  .option('--pm <manager>', 'Package manager to use (npm, pnpm, yarn, bun)')
   .action(async (projectNameArg, options) => {
     try {
       // Prompt for project name if not provided
