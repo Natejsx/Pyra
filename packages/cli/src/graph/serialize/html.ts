@@ -367,11 +367,11 @@ export function serializeHtml(graph: DependencyGraph): string {
       // More compact initial positioning
       nodes = graphData.nodes.map((node, i) => ({
         ...node,
-        x: Math.random() * 300 - 150,
-        y: Math.random() * 300 - 150,
+        x: Math.random() * 150 - 75,
+        y: Math.random() * 150 - 75,
         vx: 0,
         vy: 0,
-        radius: node.type === 'internal' ? 8 : 6,
+        radius: node.type === 'internal' ? 7 : 5,
       }));
 
       edges = graphData.edges.map(edge => ({
@@ -390,7 +390,7 @@ export function serializeHtml(graph: DependencyGraph): string {
     // Force-directed layout (simplified)
     function runSimulation() {
       const iterations = 300;
-      const k = 120; // Ideal spring length
+      const k = 70; // Ideal spring length (reduced for more compact layout)
       const c = 0.1; // Damping
 
       for (let iter = 0; iter < iterations; iter++) {
@@ -611,6 +611,41 @@ export function serializeHtml(graph: DependencyGraph): string {
       tooltip.style.display = 'none';
     }
 
+    function fitToView() {
+      const visibleNodes = nodes.filter(isNodeVisible);
+      if (visibleNodes.length === 0) return;
+
+      // Calculate bounding box
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+
+      for (const node of visibleNodes) {
+        minX = Math.min(minX, node.x - node.radius);
+        maxX = Math.max(maxX, node.x + node.radius);
+        minY = Math.min(minY, node.y - node.radius);
+        maxY = Math.max(maxY, node.y + node.radius);
+      }
+
+      const graphWidth = maxX - minX;
+      const graphHeight = maxY - minY;
+      const padding = 50;
+
+      // Calculate scale to fit
+      const scaleX = (width - padding * 2) / graphWidth;
+      const scaleY = (height - padding * 2) / graphHeight;
+      const scale = Math.min(scaleX, scaleY, 2); // Cap at 2x zoom
+
+      // Center the graph
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      transform.scale = scale;
+      transform.x = width / 2 - centerX * scale;
+      transform.y = height / 2 - centerY * scale;
+
+      render();
+    }
+
     // Controls
     document.getElementById('search').addEventListener('input', () => {
       updateStats();
@@ -623,6 +658,8 @@ export function serializeHtml(graph: DependencyGraph): string {
         render();
       });
     });
+
+    document.getElementById('btn-fit').addEventListener('click', fitToView);
 
     document.getElementById('btn-reset').addEventListener('click', () => {
       transform = { x: width / 2, y: height / 2, scale: 1 };
