@@ -6,3 +6,6 @@ export type { BuildOptions } from './build.js';
 export { bundleFile, clearBundleCache, invalidateDependentCache } from './bundler.js';
 export { metricsStore, measureAsync, measureSync } from './metrics.js';
 export type { FileMetric, PluginMetric, HMREvent, BuildMetrics, DependencyNode } from './metrics.js';
+export { scanRoutes } from './scanner.js';
+export type { ScanResult, ScannedLayout, ScannedMiddleware } from './scanner.js';
+export { createRouter } from './router.js';
