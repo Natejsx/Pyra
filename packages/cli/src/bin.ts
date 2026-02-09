@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import path from 'node:path';
 import { log, loadConfig, getPort, getOutDir } from 'pyrajs-shared';
 import { DevServer, build } from 'pyrajs-core';
+import { createReactAdapter } from 'pyrajs-adapter-react';
 import { input, select, confirm } from '@inquirer/prompts';
 import { scaffold, type Template, type Language } from './scaffold.js';
 import { initProject, validateProjectName } from './init.js';
@@ -40,7 +42,12 @@ program
 
       log.info(`Starting dev server in ${config.mode} mode...`);
 
-      const server = new DevServer({ port });
+      // v0.2: Set up route-aware SSR with the React adapter
+      const root = config.root || process.cwd();
+      const adapter = createReactAdapter();
+      const routesDir = path.resolve(root, config.routesDir || 'src/routes');
+
+      const server = new DevServer({ port, root, adapter, routesDir });
 
       await server.start();
 
