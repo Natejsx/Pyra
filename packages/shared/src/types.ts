@@ -167,6 +167,101 @@ export type PyraConfig = {
   };
 };
 
+// Route Types (v0.1) 
+/**
+ * A single route discovered by the filesystem scanner.
+ * Represents either a page route (page.tsx) or an API route (route.ts).
+ */
+export interface RouteNode {
+  /** Unique ID derived from file path: '/blog/[slug]'. */
+  readonly id: string;
+
+  /** URL pattern for matching: '/blog/:slug'. */
+  readonly pattern: string;
+
+  /** Absolute path to the route file on disk. */
+  readonly filePath: string;
+
+  /** 'page' for page.* files, 'api' for route.ts files. */
+  readonly type: 'page' | 'api';
+
+  /** Dynamic parameter names: ['slug']. Empty array for static routes. */
+  readonly params: string[];
+
+  /** Whether this is a catch-all route ([...rest]). Always false in v0.1. */
+  readonly catchAll: boolean;
+
+  /** Route ID of the nearest ancestor layout, if any. */
+  readonly layoutId?: string;
+
+  /** Absolute paths to middleware files that apply to this route (outermost first). */
+  readonly middlewarePaths: string[];
+
+  /** Child route IDs (for visualization / enumeration). */
+  readonly children: string[];
+}
+
+/**
+ * The result of matching a URL pathname against the route graph.
+ */
+export interface RouteMatch {
+  /** The matched route node. */
+  readonly route: RouteNode;
+
+  /** Extracted URL parameters: { slug: 'hello-world' }. */
+  readonly params: Record<string, string>;
+
+  /**
+   * Layout chain from outermost to innermost.
+   * Core passes this to the adapter so it can nest layouts around the page.
+   */
+  readonly layouts: RouteNode[];
+}
+
+/**
+ * The in-memory representation of all discovered routes.
+ * Built by scanning the filesystem at dev/build startup.
+ * Used by the request pipeline to match URLs at runtime.
+ */
+export interface RouteGraph {
+  /** Flat map of all route nodes keyed by route ID. */
+  readonly nodes: ReadonlyMap<string, RouteNode>;
+
+  /** Match a URL pathname to a route. Returns null if no match. */
+  match(pathname: string): RouteMatch | null;
+
+  /** Get a route by its ID. */
+  get(id: string): RouteNode | undefined;
+
+  /** All page routes (for build-time enumeration). */
+  pageRoutes(): RouteNode[];
+
+  /** All API routes. */
+  apiRoutes(): RouteNode[];
+
+  /** Serializable snapshot for debugging / manifest generation. */
+  toJSON(): SerializedRouteGraph;
+}
+
+/**
+ * JSON-serializable snapshot of the route graph.
+ */
+export interface SerializedRouteGraph {
+  routes: Record<string, {
+    id: string;
+    pattern: string;
+    filePath: string;
+    type: 'page' | 'api';
+    params: string[];
+    catchAll: boolean;
+    layoutId?: string;
+    middlewarePaths: string[];
+    children: string[];
+  }>;
+}
+
+// ─── End Route Types ──────────────────────────────────────────────────────────
+
 /**
  * Helper to define config with type safety
  */
