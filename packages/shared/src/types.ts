@@ -158,16 +158,25 @@ export type PyraConfig = {
   /** Custom esbuild options (advanced) */
   esbuild?: Record<string, any>;
 
-  /** Framework-specific options */
+  /** Framework-specific options (deprecated — use adapter instead) */
   framework?: {
     /** Framework name: 'react' | 'vue' | 'svelte' | 'preact' | 'solid' */
     name?: string;
     /** Framework-specific options */
     options?: Record<string, any>;
   };
+
+  /** The UI framework adapter. */
+  adapter?: string | PyraAdapter | false;
+
+  /** Directory containing route files, relative to root. Default: 'src/routes' */
+  routesDir?: string;
+
+  /** DOM element ID where the app mounts on the client. Default: 'app' */
+  appContainerId?: string;
 };
 
-// Route Types (v0.1) 
+// Route Types (v0.1)
 /**
  * A single route discovered by the filesystem scanner.
  * Represents either a page route (page.tsx) or an API route (route.ts).
