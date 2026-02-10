@@ -32,9 +32,9 @@ export function getVersion(): string {
 
     // Try multiple possible locations for package.json
     const possiblePaths = [
-      // When built: dist/utils/reporter.js -> ../../package.json
-      join(currentDir, '../../package.json'),
-      // When in src: src/utils/reporter.ts -> ../../package.json
+      // When bundled by tsup: dist/bin.js -> ../package.json
+      join(currentDir, '../package.json'),
+      // When built as separate files: dist/utils/reporter.js -> ../../package.json
       join(currentDir, '../../package.json'),
       // When globally linked via npm link: might be in node_modules/pyrajs-cli
       join(currentDir, '../../../package.json'),

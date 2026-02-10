@@ -49,29 +49,49 @@ program
   .option("-o, --open", "Open browser on server start")
   .option("-c, --config <path>", "Path to config file")
   .option("--mode <mode>", "Build mode (development|production)", "development")
-  
+  .option("--verbose", "Show verbose output (config loading, etc.)")
   .action(async (options) => {
+    const silent = isSilent(process.argv, process.env);
+    const color = useColor(process.argv, process.env);
+    const caps = detectCapabilities();
+
+    let requestedPort: number | undefined;
+
     try {
-      // Load configuration
+      // Load configuration (silent by default, verbose with --verbose)
       const config = await loadConfig({
         mode: options.mode,
         configFile: options.config,
+        silent: !options.verbose,
       });
 
       // CLI options override config file
-      const port = options.port ? parseInt(options.port, 10) : getPort(config);
-      const open = options.open ?? config.server?.open ?? false;
-
-      log.info(`Starting dev server in ${config.mode} mode...`);
+      requestedPort = options.port ? parseInt(options.port, 10) : getPort(config);
 
       // v0.2: Set up route-aware SSR with the React adapter
       const root = config.root || process.cwd();
       const adapter = createReactAdapter();
       const routesDir = path.resolve(root, config.routesDir || "src/routes");
 
-      const server = new DevServer({ port, root, adapter, routesDir });
+      // Auto-find available port
+      const actualPort = await findAvailablePort(requestedPort);
 
-      await server.start();
+      const server = new DevServer({ port: actualPort, root, adapter, routesDir });
+      const result = await server.start();
+
+      // Add port fallback warning if port changed
+      if (actualPort !== requestedPort) {
+        result.warnings.unshift(`Port ${requestedPort} in use, using ${actualPort}`);
+      }
+
+      // Print styled startup banner
+      printDevBanner({
+        result,
+        version: getVersion(),
+        color,
+        silent,
+        ci: caps.isCI,
+      });
 
       // Handle graceful shutdown
       let isShuttingDown = false;
@@ -80,7 +100,8 @@ program
         if (isShuttingDown) return;
         isShuttingDown = true;
 
-        log.info("\nShutting down dev server...");
+        console.log('');
+        log.info("Shutting down dev server...");
 
         server
           .stop()
@@ -95,8 +116,47 @@ program
 
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
+
+      // Set up keyboard shortcuts (TTY only, not in CI)
+      if (!caps.isCI && process.stdin.isTTY) {
+        const localUrl = `${result.protocol}://localhost:${result.port}/`;
+
+        setupKeyboardShortcuts({
+          onRestart: async () => {
+            log.info("Restarting server...");
+            await server.stop();
+            const newResult = await server.start();
+            printDevBanner({
+              result: newResult,
+              version: getVersion(),
+              color,
+              silent,
+              ci: false,
+            });
+          },
+          onQuit: () => shutdown(),
+          onOpen: () => {
+            import("child_process").then(({ exec }) => {
+              const cmd =
+                process.platform === "win32"
+                  ? `start ${localUrl}`
+                  : process.platform === "darwin"
+                    ? `open ${localUrl}`
+                    : `xdg-open ${localUrl}`;
+              exec(cmd);
+            });
+          },
+          onClear: () => console.clear(),
+          color,
+        });
+      }
     } catch (error) {
-      log.error(`Failed to start dev server: ${error}`);
+      const err = error as NodeJS.ErrnoException;
+      if (err.message?.includes('No available port found')) {
+        log.error(`No available port found starting from ${requestedPort ?? 3000}`);
+      } else {
+        log.error(`Failed to start dev server: ${error}`);
+      }
       process.exit(1);
     }
   });
