@@ -15,7 +15,7 @@ export function startTimer(): () => number {
 /**
  * Format duration in milliseconds to human-readable string
  */
-function formatDuration(ms: number): string {
+export function formatDuration(ms: number): string {
   if (ms < 1000) {
     return `${Math.round(ms)} ms`;
   }
@@ -25,7 +25,7 @@ function formatDuration(ms: number): string {
 /**
  * Get package version from CLI's package.json
  */
-function getVersion(): string {
+export function getVersion(): string {
   try {
     // Get the current file's directory
     const currentDir = dirname(fileURLToPath(import.meta.url));
