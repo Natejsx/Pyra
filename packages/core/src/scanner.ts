@@ -34,9 +34,11 @@ function toRouteId(dirPath: string, routesDir: string): string {
   return "/" + posixRel;
 }
 
-/** Convert a route ID to a URL pattern: /blog/[slug] → /blog/:slug */
+/** Convert a route ID to a URL pattern: /blog/[slug] → /blog/:slug, /api/auth/[...path] → /api/auth/*path */
 function toUrlPattern(routeId: string): string {
-  return routeId.replace(/\[([^\]]+)\]/g, ":$1");
+  return routeId
+    .replace(/\[\.\.\.([^\]]+)\]/g, "*$1")   // catch-all: [...rest] → *rest
+    .replace(/\[([^\]]+)\]/g, ":$1");         // dynamic: [slug] → :slug
 }
 
 /** Extract dynamic parameter names from a route ID. */
