@@ -46,6 +46,7 @@ program
   .option("-o, --open", "Open browser on server start")
   .option("-c, --config <path>", "Path to config file")
   .option("--mode <mode>", "Build mode (development|production)", "development")
+  
   .action(async (options) => {
     try {
       // Load configuration

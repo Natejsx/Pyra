@@ -176,6 +176,31 @@ export type PyraConfig = {
   appContainerId?: string;
 };
 
+/**
+ * Structured result returned by DevServer.start().
+ * Contains all data the CLI needs to render the startup banner.
+ */
+export interface DevServerResult {
+  /** The port the server is actually listening on. */
+  port: number;
+  /** The host the server is bound to. */
+  host: string;
+  /** The protocol (http or https). */
+  protocol: 'http' | 'https';
+  /** Whether SSR is active (adapter + routes found). */
+  ssr: boolean;
+  /** Adapter name if SSR is enabled (e.g., 'react'). */
+  adapterName?: string;
+  /** Number of page routes discovered. */
+  pageRouteCount: number;
+  /** Number of API routes discovered. */
+  apiRouteCount: number;
+  /** Warnings collected during startup. */
+  warnings: string[];
+  /** Elapsed startup time in milliseconds. */
+  startupMs: number;
+}
+
 // Route Types (v0.1)
 /**
  * A single route discovered by the filesystem scanner.
