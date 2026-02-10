@@ -201,6 +201,27 @@ export interface DevServerResult {
   startupMs: number;
 }
 
+export interface ProdServerResult {
+  /** The port the server is actually listening on. */
+  port: number;
+  /** The host the server is bound to. */
+  host: string;
+  /** The protocol (http or https). */
+  protocol: "http" | "https";
+  /** Adapter name (e.g., 'react'). */
+  adapterName: string;
+  /** Number of page routes in the manifest. */
+  pageRouteCount: number;
+  /** Number of API routes in the manifest. */
+  apiRouteCount: number;
+  /** Number of SSG (prerendered) routes in the manifest. */
+  ssgRouteCount: number;
+  /** Warnings collected during startup. */
+  warnings: string[];
+  /** Elapsed startup time in milliseconds. */
+  startupMs: number;
+}
+
 // Route Types (v0.1)
 /**
  * A single route discovered by the filesystem scanner.
