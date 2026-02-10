@@ -1,3 +1,6 @@
+// Static prerendered page — no dynamic data, rendered at build time
+export const prerender = true;
+
 export default function About() {
   return (
     <div>

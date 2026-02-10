@@ -537,7 +537,7 @@ export class ProdServer {
 
     res.writeHead(200, {
       "Content-Type": "text/html",
-      "Cache-Control": "no-cache",
+      "Cache-Control": buildCacheControlHeader(entry.cache),
     });
     res.end(html);
   }
@@ -599,6 +599,24 @@ export class ProdServer {
 }
 
 // ─── Standalone helpers ────────────────────────────────────────────────────
+
+/**
+ * Build a Cache-Control header value from a route's CacheConfig.
+ * Returns "no-cache" if no cache config is provided.
+ */
+function buildCacheControlHeader(
+  cache: import("pyrajs-shared").CacheConfig | undefined,
+): string {
+  if (!cache) return "no-cache";
+
+  const parts: string[] = ["public"];
+  if (cache.maxAge !== undefined) parts.push(`max-age=${cache.maxAge}`);
+  if (cache.sMaxAge !== undefined) parts.push(`s-maxage=${cache.sMaxAge}`);
+  if (cache.staleWhileRevalidate !== undefined)
+    parts.push(`stale-while-revalidate=${cache.staleWhileRevalidate}`);
+
+  return parts.length === 1 ? "no-cache" : parts.join(", ");
+}
 
 /**
  * Generate <link> and <script> tags for a route's manifest-declared assets.
