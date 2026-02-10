@@ -21,6 +21,7 @@ import type { OutputFormat } from "./graph/types.js";
 
 const program = new Command();
 
+// If no arguments are provided and the user types "pyra", it'll show this as the default
 program
   .name("pyra")
   .description(
@@ -497,9 +498,5 @@ program
     }
   });
 
-// Show help by default if no command is provided
-if (!process.argv.slice(2).length) {
-  program.outputHelp();
-}
 
 program.parse();
