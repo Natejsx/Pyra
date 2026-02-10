@@ -70,6 +70,9 @@ export class DevServer {
 
     // Create WebSocket server for HMR
     this.wss = new WebSocketServer({ server: this.server });
+    this.wss.on("error", () => {
+      // Handled by the HTTP server's error listener (e.g. EADDRINUSE)
+    });
     this.setupWebSocket();
   }
 
