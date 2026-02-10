@@ -41,15 +41,20 @@ function toUrlPattern(routeId: string): string {
     .replace(/\[([^\]]+)\]/g, ":$1");         // dynamic: [slug] → :slug
 }
 
-/** Extract dynamic parameter names from a route ID. */
+/** Extract dynamic parameter names from a route ID. Handles both [param] and [...param]. */
 function extractParams(routeId: string): string[] {
   const params: string[] = [];
-  const regex = /\[([^\]]+)\]/g;
+  const regex = /\[(?:\.\.\.)?([^\]]+)\]/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(routeId)) !== null) {
     params.push(match[1]);
   }
   return params;
+}
+
+/** Check if a route ID contains a catch-all segment ([...name]). */
+function hasCatchAll(routeId: string): boolean {
+  return /\[\.\.\.([^\]]+)\]/.test(routeId);
 }
 
 /** Check if a filename matches any of the sentinel page file patterns. */
@@ -177,7 +182,7 @@ async function walkDirectory(
       filePath: pageFilePath,
       type: "page",
       params: extractParams(routeId),
-      catchAll: false,
+      catchAll: hasCatchAll(routeId),
       middlewarePaths: [], // resolved in phase 2
       children: [], // resolved in phase 3
     });
@@ -189,7 +194,7 @@ async function walkDirectory(
       filePath: routeFilePath,
       type: "api",
       params: extractParams(routeId),
-      catchAll: false,
+      catchAll: hasCatchAll(routeId),
       middlewarePaths: [], // resolved in phase 2
       children: [], // resolved in phase 3
     });
