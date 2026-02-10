@@ -11,3 +11,5 @@ export type { ScanResult, ScannedLayout, ScannedMiddleware } from './scanner.js'
 export { createRouter } from './router.js';
 export { createRequestContext, escapeJsonForScript } from './request-context.js';
 export type { CreateRequestContextOptions } from './request-context.js';
+export { ProdServer } from './prod-server.js';
+export type { ProdServerOptions } from './prod-server.js';

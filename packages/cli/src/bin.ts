@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import path from 'node:path';
 import { log, loadConfig, getPort, getOutDir } from 'pyrajs-shared';
-import { DevServer, build } from 'pyrajs-core';
+import { DevServer, build, ProdServer } from 'pyrajs-core';
 import { createReactAdapter } from 'pyrajs-adapter-react';
 import { input, select, confirm } from '@inquirer/prompts';
 import { scaffold, type Template, type Language } from './scaffold.js';
@@ -134,6 +134,72 @@ program
 
     } catch (error) {
       log.error(`Build failed: ${error}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('start')
+  .description('Start the production server (requires pyra build first)')
+  .option('-p, --port <number>', 'Port to run production server on')
+  .option('-c, --config <path>', 'Path to config file')
+  .option('-d, --dist <path>', 'Path to dist directory (default: dist)')
+  .option('--silent', 'Suppress banner and timing output')
+  .action(async (options) => {
+    const silent = isSilent(process.argv, process.env);
+    const color = useColor(process.argv, process.env);
+
+    if (!silent) {
+      printBanner({ silent, color });
+      console.log('');
+    }
+
+    try {
+      // Load configuration
+      const config = await loadConfig({
+        mode: 'production',
+        configFile: options.config,
+      });
+
+      // Resolve paths
+      const root = config.root || process.cwd();
+      const distDir = path.resolve(root, options.dist || getOutDir(config));
+      const port = options.port ? parseInt(options.port, 10) : getPort(config);
+
+      // Resolve adapter (v1.0: always React)
+      const adapter = createReactAdapter();
+
+      // Create and start the production server
+      const server = new ProdServer({
+        distDir,
+        adapter,
+        port,
+        config,
+      });
+
+      await server.start();
+
+      // Handle graceful shutdown
+      let isShuttingDown = false;
+
+      const shutdown = () => {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
+
+        log.info('\nShutting down production server...');
+
+        server.stop()
+          .then(() => process.exit(0))
+          .catch((error) => {
+            log.error(`Error during shutdown: ${error}`);
+            process.exit(1);
+          });
+      };
+
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+    } catch (error) {
+      log.error(`Failed to start production server: ${error}`);
       process.exit(1);
     }
   });
