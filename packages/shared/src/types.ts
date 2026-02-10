@@ -527,6 +527,12 @@ export interface ManifestRouteEntry {
   /** Whether the route module exports a load() function. */
   hasLoad?: boolean;
 
+  /** Number of prerendered paths for dynamic SSG routes (e.g., 3 for 3 slugs). */
+  prerenderedCount?: number;
+
+  /** Cache-Control configuration from the route's cache export. */
+  cache?: CacheConfig;
+
   // --- API route fields (present when type === 'api') ---
 
   /** Path to the server handler module (relative to dist/server/). */
