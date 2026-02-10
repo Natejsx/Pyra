@@ -34,6 +34,7 @@ export interface ProdServerOptions {
 interface TrieNode {
   staticChildren: Map<string, TrieNode>;
   dynamicChild: { paramName: string; node: TrieNode } | null;
+  catchAllChild: { paramName: string; entry: ManifestRouteEntry } | null;
   entry: ManifestRouteEntry | null;
 }
 
@@ -43,7 +44,7 @@ interface MatchResult {
 }
 
 function createTrieNode(): TrieNode {
-  return { staticChildren: new Map(), dynamicChild: null, entry: null };
+  return { staticChildren: new Map(), dynamicChild: null, catchAllChild: null, entry: null };
 }
 
 function splitSegments(value: string): string[] {
@@ -65,9 +66,16 @@ function buildMatcher(
   for (const entry of Object.values(routes)) {
     const segments = splitSegments(entry.pattern);
     let current = root;
+    let isCatchAll = false;
 
     for (const segment of segments) {
-      if (segment.startsWith(":")) {
+      if (segment.startsWith("*")) {
+        // Catch-all segment — store on the current node and stop
+        const paramName = segment.slice(1);
+        current.catchAllChild = { paramName, entry };
+        isCatchAll = true;
+        break;
+      } else if (segment.startsWith(":")) {
         const paramName = segment.slice(1);
         if (!current.dynamicChild) {
           current.dynamicChild = { paramName, node: createTrieNode() };
@@ -83,10 +91,12 @@ function buildMatcher(
       }
     }
 
-    current.entry = entry;
+    if (!isCatchAll) {
+      current.entry = entry;
+    }
   }
 
-  // Match function — static children first, then dynamic (same as router.ts)
+  // Match function — static first, then dynamic, then catch-all (same as router.ts)
   function matchSegments(
     node: TrieNode,
     segments: string[],
@@ -97,20 +107,27 @@ function buildMatcher(
 
     const segment = segments[index];
 
-    // Static first
+    // 1. Static first (highest priority)
     const staticChild = node.staticChildren.get(segment);
     if (staticChild) {
       const result = matchSegments(staticChild, segments, index + 1, params);
       if (result) return result;
     }
 
-    // Dynamic fallback
+    // 2. Dynamic fallback (medium priority)
     if (node.dynamicChild) {
       const { paramName, node: dynamicNode } = node.dynamicChild;
       params[paramName] = segment;
       const result = matchSegments(dynamicNode, segments, index + 1, params);
       if (result) return result;
       delete params[paramName];
+    }
+
+    // 3. Catch-all (lowest priority) — consumes all remaining segments
+    if (node.catchAllChild) {
+      const { paramName, entry } = node.catchAllChild;
+      params[paramName] = segments.slice(index).join("/");
+      return entry;
     }
 
     return null;
