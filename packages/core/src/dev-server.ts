@@ -6,8 +6,9 @@ import { pathToFileURL } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import chokidar, { type FSWatcher } from "chokidar";
 import { log } from "pyrajs-shared";
-import type { PyraConfig, PyraAdapter, RouteGraph, RenderContext, DevServerResult, RouteMatch } from "pyrajs-shared";
+import type { PyraConfig, PyraAdapter, RouteGraph, RenderContext, DevServerResult, RouteMatch, Middleware } from "pyrajs-shared";
 import { HTTP_METHODS } from "pyrajs-shared";
+import { runMiddleware } from "./middleware.js";
 import { bundleFile, invalidateDependentCache } from "./bundler.js";
 import { metricsStore } from "./metrics.js";
 import { scanRoutes } from "./scanner.js";
@@ -152,13 +153,31 @@ export class DevServer {
         const match = this.router.match(cleanUrl);
 
         if (match) {
-          if (match.route.type === "api") {
-            await this.handleApiRoute(req, res, match);
-            return;
-          }
+          // Build RequestContext for middleware + handlers
+          const ctx = createRequestContext({
+            req,
+            params: match.params,
+            routeId: match.route.id,
+            mode: "development",
+          });
 
-          // Page route → SSR pipeline
-          await this.handlePageRoute(req, res, cleanUrl, match);
+          // Load middleware chain
+          const chain = await this.loadMiddlewareChain(match.route.middlewarePaths);
+
+          // Run middleware → route handler
+          const response = await runMiddleware(chain, ctx, async () => {
+            if (match.route.type === "api") {
+              return this.handleApiRouteInner(req, ctx, match);
+            }
+            return this.handlePageRouteInner(req, ctx, cleanUrl, match);
+          });
+
+          // Send response + cookies
+          await this.sendWebResponse(res, response);
+          const setCookies = getSetCookieHeaders(ctx);
+          for (const cookie of setCookies) {
+            res.appendHeader("Set-Cookie", cookie);
+          }
           return;
         }
         // No route matched — fall through to static file serving
@@ -235,17 +254,15 @@ export class DevServer {
   // ── SSR Pipeline ────────────────────────────────────────────────────────────
 
   /**
-   * Handle a matched page route: compile → import → render → shell → respond.
-   *
-   * This is the core SSR pipeline. Core never sees React — it passes
-   * the opaque component to the adapter's renderToHTML().
+   * Inner page route handler that returns a Response.
+   * Called from within the middleware chain.
    */
-  private async handlePageRoute(
+  private async handlePageRouteInner(
     req: http.IncomingMessage,
-    res: http.ServerResponse,
+    ctx: import("pyrajs-shared").RequestContext,
     pathname: string,
     match: RouteMatch,
-  ): Promise<void> {
+  ): Promise<Response> {
     const { route, params } = match;
     const adapter = this.adapter!;
 
@@ -253,54 +270,52 @@ export class DevServer {
     const serverModule = await this.compileForServer(route.filePath);
 
     // 2. Import the compiled module
-    // Cache-bust by appending timestamp query to force re-import after recompile
     const moduleUrl =
       pathToFileURL(serverModule).href + `?t=${Date.now()}`;
     const mod = await import(moduleUrl);
     const component = mod.default;
 
     if (!component) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(
+      return new Response(
         `Route "${route.id}" (${route.filePath}) does not export a default component.`,
+        { status: 500, headers: { "Content-Type": "text/plain" } },
       );
-      return;
     }
 
     // 3. Call load() if exported (v0.3)
     let data: unknown = null;
     if (typeof mod.load === "function") {
-      const requestContext = createRequestContext({
-        req,
-        params,
-        routeId: route.id,
-        mode: "development",
-      });
-
-      const loadResult = await mod.load(requestContext);
+      const loadResult = await mod.load(ctx);
 
       // If load() returns a Response, short-circuit the SSR pipeline
       if (loadResult instanceof Response) {
-        await this.sendWebResponse(res, loadResult);
-
-        // Also apply any Set-Cookie headers from the context
-        const setCookies = getSetCookieHeaders(requestContext);
-        for (const cookie of setCookies) {
-          res.appendHeader("Set-Cookie", cookie);
-        }
-        return;
+        return loadResult;
       }
 
       data = loadResult;
+    }
 
-      // Apply Set-Cookie headers from the request context
-      const setCookies = getSetCookieHeaders(requestContext);
-      for (const cookie of setCookies) {
-        res.appendHeader("Set-Cookie", cookie);
+    // 4. Load layout components
+    const layoutComponents: unknown[] = [];
+    const layoutClientUrls: string[] = [];
+    if (match.layouts && match.layouts.length > 0) {
+      for (const layoutNode of match.layouts) {
+        const layoutModule = await this.compileForServer(layoutNode.filePath);
+        const layoutUrl =
+          pathToFileURL(layoutModule).href + `?t=${Date.now()}`;
+        const layoutMod = await import(layoutUrl);
+        if (layoutMod.default) {
+          layoutComponents.push(layoutMod.default);
+          // Build client URL for this layout
+          const clientPath = path.relative(this.root, layoutNode.filePath);
+          layoutClientUrls.push(
+            "/__pyra/modules/" + clientPath.split(path.sep).join("/"),
+          );
+        }
       }
     }
 
-    // 4. Build RenderContext
+    // 5. Build RenderContext
     const headTags: string[] = [];
     const renderContext: RenderContext = {
       url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
@@ -308,28 +323,28 @@ export class DevServer {
       pushHead(tag: string) {
         headTags.push(tag);
       },
+      layouts: layoutComponents.length > 0 ? layoutComponents : undefined,
     };
 
-    // 5. Call adapter.renderToHTML() with load data
+    // 6. Call adapter.renderToHTML() with load data
     const bodyHtml = await adapter.renderToHTML(component, data, renderContext);
 
-    // 6. Get document shell
+    // 7. Get document shell
     const shell = adapter.getDocumentShell?.() || DEFAULT_SHELL;
 
-    // 7. Build the client module URL for hydration
+    // 8. Build the client module URL for hydration
     const clientModulePath = path.relative(this.root, route.filePath);
-    // Normalize to posix separators for URL
     const clientModuleUrl =
       "/__pyra/modules/" + clientModulePath.split(path.sep).join("/");
 
-    // 8. Get hydration script from adapter
+    // 9. Get hydration script from adapter (with layout paths if present)
     const hydrationScript = adapter.getHydrationScript(
       clientModuleUrl,
       this.containerId,
+      layoutClientUrls.length > 0 ? layoutClientUrls : undefined,
     );
 
-    // 9. Serialize data for client hydration
-    // Merge load data + params so the client gets the same props as SSR
+    // 10. Serialize data for client hydration
     const hydrationData: Record<string, unknown> = {};
     if (data && typeof data === "object") {
       Object.assign(hydrationData, data);
@@ -338,20 +353,14 @@ export class DevServer {
     const serializedData = escapeJsonForScript(JSON.stringify(hydrationData));
     const dataScript = `<script id="__pyra_data" type="application/json">${serializedData}</script>`;
 
-    // 10. Assemble the full HTML
+    // 11. Assemble the full HTML
     let html = shell;
-
-    // Replace container ID placeholder if present
     html = html.replace("__CONTAINER_ID__", this.containerId);
-
-    // Inject page body into the outlet
     html = html.replace("<!--pyra-outlet-->", bodyHtml);
 
-    // Inject head tags
     const headContent = headTags.join("\n  ");
     html = html.replace("<!--pyra-head-->", headContent);
 
-    // Inject data script, hydration script, and HMR client before </body>
     const scripts = [
       dataScript,
       `<script type="module">${hydrationScript}</script>`,
@@ -360,24 +369,27 @@ export class DevServer {
     html = this.injectHMRClient(html);
     html = html.replace("</body>", `  ${scripts}\n</body>`);
 
-    res.writeHead(200, {
-      "Content-Type": "text/html",
-      "Cache-Control": "no-cache",
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html",
+        "Cache-Control": "no-cache",
+      },
     });
-    res.end(html);
   }
 
   // ── API Route Handler ─────────────────────────────────────────────────────────
 
   /**
-   * Handle a matched API route: compile → import → check method → call handler → respond.
+   * Inner API route handler that returns a Response.
+   * Called from within the middleware chain.
    */
-  private async handleApiRoute(
+  private async handleApiRouteInner(
     req: http.IncomingMessage,
-    res: http.ServerResponse,
+    ctx: import("pyrajs-shared").RequestContext,
     match: RouteMatch,
-  ): Promise<void> {
-    const { route, params } = match;
+  ): Promise<Response> {
+    const { route } = match;
 
     // 1. Compile the API route module for server
     const serverModule = await this.compileForServer(route.filePath);
@@ -391,42 +403,44 @@ export class DevServer {
     const method = (req.method || "GET").toUpperCase();
 
     if (typeof mod[method] !== "function") {
-      // Collect available methods for the Allow header
       const allowedMethods = (HTTP_METHODS as readonly string[]).filter(
         (m) => typeof mod[m] === "function",
       );
-      res.writeHead(405, {
-        "Content-Type": "application/json",
-        Allow: allowedMethods.join(", "),
-      });
-      res.end(
+      return new Response(
         JSON.stringify({
           error: `Method ${method} not allowed`,
           allowed: allowedMethods,
         }),
+        {
+          status: 405,
+          headers: {
+            "Content-Type": "application/json",
+            Allow: allowedMethods.join(", "),
+          },
+        },
       );
-      return;
     }
 
-    // 4. Build RequestContext
-    const ctx = createRequestContext({
-      req,
-      params,
-      routeId: route.id,
-      mode: "development",
-    });
+    // 4. Call the handler with the shared RequestContext
+    return mod[method](ctx);
+  }
 
-    // 5. Call the handler
-    const response: Response = await mod[method](ctx);
+  // ── Middleware Loading ──────────────────────────────────────────────────────
 
-    // 6. Send the Response
-    await this.sendWebResponse(res, response);
-
-    // 7. Apply Set-Cookie headers from the context
-    const setCookies = getSetCookieHeaders(ctx);
-    for (const cookie of setCookies) {
-      res.appendHeader("Set-Cookie", cookie);
+  /**
+   * Compile and import middleware files, returning an array of Middleware functions.
+   */
+  private async loadMiddlewareChain(middlewarePaths: string[]): Promise<Middleware[]> {
+    const chain: Middleware[] = [];
+    for (const filePath of middlewarePaths) {
+      const compiled = await this.compileForServer(filePath);
+      const moduleUrl = pathToFileURL(compiled).href + `?t=${Date.now()}`;
+      const mod = await import(moduleUrl);
+      if (typeof mod.default === "function") {
+        chain.push(mod.default);
+      }
     }
+    return chain;
   }
 
   /**

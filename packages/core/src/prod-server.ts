@@ -11,8 +11,10 @@ import type {
   ManifestRouteEntry,
   RenderContext,
   ProdServerResult,
+  Middleware,
 } from "pyrajs-shared";
 import { HTTP_METHODS } from "pyrajs-shared";
+import { runMiddleware } from "./middleware.js";
 import {
   createRequestContext,
   getSetCookieHeaders,
@@ -292,20 +294,34 @@ export class ProdServer {
         return;
       }
 
-      // 3. API routes
-      if (match.entry.type === "api") {
-        await this.handleApiRoute(req, res, match);
-        return;
-      }
+      // 3. Build RequestContext
+      const ctx = createRequestContext({
+        req,
+        params: match.params,
+        routeId: match.entry.id,
+        mode: "production",
+        envPrefix: (this.config?.env?.prefix as string) || "PYRA_",
+      });
 
-      // 4. Prerendered page → serve static HTML directly
-      if (match.entry.prerendered) {
-        this.servePrerenderedPage(req, res, cleanUrl, match);
-        return;
-      }
+      // 4. Load middleware chain
+      const chain = await this.loadMiddlewareChain(match.entry.middleware || []);
 
-      // 5. Dynamic SSR page route
-      await this.handlePageRoute(req, res, cleanUrl, match);
+      // 5. Run middleware → route handler
+      const response = await runMiddleware(chain, ctx, async () => {
+        if (match.entry.type === "api") {
+          return this.handleApiRouteInner(req, ctx, match);
+        }
+        if (match.entry.prerendered) {
+          return this.servePrerenderedPageInner(cleanUrl, match);
+        }
+        return this.handlePageRouteInner(req, ctx, cleanUrl, match);
+      });
+
+      // 6. Send response + cookies
+      await this.sendWebResponse(res, response);
+      for (const cookie of getSetCookieHeaders(ctx)) {
+        res.appendHeader("Set-Cookie", cookie);
+      }
     } catch (error) {
       log.error(`Error serving ${cleanUrl}: ${error}`);
       res.writeHead(500, { "Content-Type": "text/plain" });
@@ -335,23 +351,16 @@ export class ProdServer {
 
   // ── Prerendered Page Serving ─────────────────────────────────────────────
 
-  private servePrerenderedPage(
-    _req: http.IncomingMessage,
-    res: http.ServerResponse,
+  private servePrerenderedPageInner(
     pathname: string,
     match: MatchResult,
-  ): void {
-    const { entry, params } = match;
+  ): Response {
+    const { entry } = match;
 
-    // For static prerendered pages, use the prerenderedFile path directly.
-    // For dynamic prerendered pages (e.g., /blog/[slug] with multiple paths),
-    // compute the concrete HTML path from the URL.
     let htmlRelPath: string;
     if (entry.prerenderedFile && !entry.prerenderedCount) {
-      // Static: single prerendered file
       htmlRelPath = entry.prerenderedFile;
     } else {
-      // Dynamic: build path from URL pathname
       htmlRelPath = pathname === "/"
         ? "index.html"
         : pathname.slice(1) + "/index.html";
@@ -360,149 +369,121 @@ export class ProdServer {
     const htmlAbsPath = path.join(this.clientDir, htmlRelPath);
 
     if (!fs.existsSync(htmlAbsPath)) {
-      // Prerendered file missing — fall back to SSR (shouldn't happen normally)
       log.warn(`Prerendered file not found for ${pathname}: ${htmlAbsPath}`);
-      res.writeHead(404, { "Content-Type": "text/html" });
-      res.end(this.get404HTML(pathname));
-      return;
+      return new Response(this.get404HTML(pathname), {
+        status: 404,
+        headers: { "Content-Type": "text/html" },
+      });
     }
 
-    const content = fs.readFileSync(htmlAbsPath);
+    const content = fs.readFileSync(htmlAbsPath, "utf-8");
     const cacheControl = buildCacheControlHeader(entry.cache);
 
-    res.writeHead(200, {
-      "Content-Type": "text/html",
-      "Content-Length": content.length,
-      "Cache-Control": cacheControl,
+    return new Response(content, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html",
+        "Cache-Control": cacheControl,
+      },
     });
-    res.end(content);
   }
 
   // ── API Route Handler ────────────────────────────────────────────────────
 
-  private async handleApiRoute(
+  private async handleApiRouteInner(
     req: http.IncomingMessage,
-    res: http.ServerResponse,
+    ctx: import("pyrajs-shared").RequestContext,
     match: MatchResult,
-  ): Promise<void> {
-    const { entry, params } = match;
+  ): Promise<Response> {
+    const { entry } = match;
     const method = (req.method || "GET").toUpperCase();
 
-    // 1. Check if this method is available (from build-time export detection)
     const allowedMethods = entry.methods || [];
     if (!allowedMethods.includes(method)) {
-      res.writeHead(405, {
-        "Content-Type": "application/json",
-        Allow: allowedMethods.join(", "),
-      });
-      res.end(
+      return new Response(
         JSON.stringify({
           error: `Method ${method} not allowed`,
           allowed: allowedMethods,
         }),
+        {
+          status: 405,
+          headers: {
+            "Content-Type": "application/json",
+            Allow: allowedMethods.join(", "),
+          },
+        },
       );
-      return;
     }
 
-    // 2. Import the pre-built server entry
     if (!entry.serverEntry) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(`API route "${entry.id}" has no server entry in the manifest.`);
-      return;
+      return new Response(
+        `API route "${entry.id}" has no server entry in the manifest.`,
+        { status: 500, headers: { "Content-Type": "text/plain" } },
+      );
     }
 
     const serverPath = path.join(this.serverDir, entry.serverEntry);
     const mod = await this.importModule(serverPath);
 
     if (typeof mod[method] !== "function") {
-      // Shouldn't happen if build detected it, but handle gracefully
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(`API route "${entry.id}" does not export a ${method} handler.`);
-      return;
+      return new Response(
+        `API route "${entry.id}" does not export a ${method} handler.`,
+        { status: 500, headers: { "Content-Type": "text/plain" } },
+      );
     }
 
-    // 3. Build RequestContext
-    const ctx = createRequestContext({
-      req,
-      params,
-      routeId: entry.id,
-      mode: "production",
-      envPrefix: (this.config?.env?.prefix as string) || "PYRA_",
-    });
-
-    // 4. Call the handler
-    const response: Response = await mod[method](ctx);
-
-    // 5. Send the Response
-    await this.sendWebResponse(res, response);
-
-    // 6. Apply Set-Cookie headers
-    for (const cookie of getSetCookieHeaders(ctx)) {
-      res.appendHeader("Set-Cookie", cookie);
-    }
+    return mod[method](ctx);
   }
 
   // ── SSR Pipeline ─────────────────────────────────────────────────────────
 
-  private async handlePageRoute(
+  private async handlePageRouteInner(
     req: http.IncomingMessage,
-    res: http.ServerResponse,
+    ctx: import("pyrajs-shared").RequestContext,
     pathname: string,
     match: MatchResult,
-  ): Promise<void> {
+  ): Promise<Response> {
     const { entry, params } = match;
 
-    // 1. Import the pre-built SSR module
     if (!entry.ssrEntry) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(`Route "${entry.id}" has no SSR entry in the manifest.`);
-      return;
+      return new Response(
+        `Route "${entry.id}" has no SSR entry in the manifest.`,
+        { status: 500, headers: { "Content-Type": "text/plain" } },
+      );
     }
 
     const ssrPath = path.join(this.serverDir, entry.ssrEntry);
     const mod = await this.importModule(ssrPath);
 
-    // 2. Validate default export
     const component = mod.default;
     if (!component) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(
+      return new Response(
         `Route "${entry.id}" (${entry.ssrEntry}) does not export a default component.`,
+        { status: 500, headers: { "Content-Type": "text/plain" } },
       );
-      return;
     }
 
-    // 3. Call load() if present
+    // Call load() if present
     let data: unknown = null;
     if (entry.hasLoad && typeof mod.load === "function") {
-      const ctx = createRequestContext({
-        req,
-        params,
-        routeId: entry.id,
-        mode: "production",
-        envPrefix: (this.config?.env?.prefix as string) || "PYRA_",
-      });
-
       const loadResult = await mod.load(ctx);
-
-      // Short-circuit if load() returns a Response
       if (loadResult instanceof Response) {
-        await this.sendWebResponse(res, loadResult);
-        for (const cookie of getSetCookieHeaders(ctx)) {
-          res.appendHeader("Set-Cookie", cookie);
-        }
-        return;
+        return loadResult;
       }
-
       data = loadResult;
+    }
 
-      // Apply Set-Cookie headers
-      for (const cookie of getSetCookieHeaders(ctx)) {
-        res.appendHeader("Set-Cookie", cookie);
+    // Load layout components
+    const layoutComponents: unknown[] = [];
+    if (entry.layoutEntries && entry.layoutEntries.length > 0) {
+      for (const layoutEntry of entry.layoutEntries) {
+        const layoutPath = path.join(this.serverDir, layoutEntry);
+        const layoutMod = await this.importModule(layoutPath);
+        if (layoutMod.default) layoutComponents.push(layoutMod.default);
       }
     }
 
-    // 4. Build RenderContext
+    // Build RenderContext
     const headTags: string[] = [];
     const renderContext: RenderContext = {
       url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
@@ -510,22 +491,18 @@ export class ProdServer {
       pushHead(tag: string) {
         headTags.push(tag);
       },
+      layouts: layoutComponents.length > 0 ? layoutComponents : undefined,
     };
 
-    // 5. Render via adapter
     const bodyHtml = await this.adapter.renderToHTML(
       component,
       data,
       renderContext,
     );
 
-    // 6. Get document shell
     const shell = this.adapter.getDocumentShell?.() || DEFAULT_SHELL;
-
-    // 7. Build manifest-driven asset tags (per-route only)
     const assetTags = buildAssetTags(entry, this.manifest.base);
 
-    // 8. Serialize data for client hydration
     const hydrationData: Record<string, unknown> = {};
     if (data && typeof data === "object") {
       Object.assign(hydrationData, data);
@@ -534,14 +511,17 @@ export class ProdServer {
     const serializedData = escapeJsonForScript(JSON.stringify(hydrationData));
     const dataScript = `<script id="__pyra_data" type="application/json">${serializedData}</script>`;
 
-    // 9. Build hydration script
+    // Build hydration script (with layout client paths if present)
     const clientEntryUrl = this.manifest.base + entry.clientEntry;
+    const layoutClientUrls = entry.layoutClientEntries
+      ? entry.layoutClientEntries.map(p => this.manifest.base + p)
+      : undefined;
     const hydrationScript = this.adapter.getHydrationScript(
       clientEntryUrl,
       this.containerId,
+      layoutClientUrls,
     );
 
-    // 10. Assemble full HTML
     let html = shell;
     html = html.replace("__CONTAINER_ID__", this.containerId);
     html = html.replace("<!--pyra-outlet-->", bodyHtml);
@@ -557,11 +537,31 @@ export class ProdServer {
       `  ${dataScript}\n  ${assetTags.body}\n  <script type="module">${hydrationScript}</script>\n</body>`,
     );
 
-    res.writeHead(200, {
-      "Content-Type": "text/html",
-      "Cache-Control": buildCacheControlHeader(entry.cache),
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html",
+        "Cache-Control": buildCacheControlHeader(entry.cache),
+      },
     });
-    res.end(html);
+  }
+
+  // ── Middleware Loading ──────────────────────────────────────────────────
+
+  /**
+   * Load middleware chain from pre-built server modules.
+   * @param entries - Relative paths to middleware modules in dist/server/.
+   */
+  private async loadMiddlewareChain(entries: string[]): Promise<Middleware[]> {
+    const chain: Middleware[] = [];
+    for (const entry of entries) {
+      const absPath = path.join(this.serverDir, entry);
+      const mod = await this.importModule(absPath);
+      if (typeof mod.default === "function") {
+        chain.push(mod.default);
+      }
+    }
+    return chain;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

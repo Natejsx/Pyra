@@ -43,26 +43,60 @@ export function createReactAdapter(): PyraAdapter {
       context: RenderContext,
     ): string {
       // Merge load() data (if any) with route params into props.
-      // In v0.2 data is always null — params are the only props.
-      // In v0.3+ data comes from load() and is merged in.
       const props: Record<string, unknown> = {};
       if (data && typeof data === "object") {
         Object.assign(props, data);
       }
       props.params = context.params;
 
-      // The component is the default export from page.tsx — a React component.
-      // Core passes it as `unknown`; we know it's a ComponentType.
-      const element = createElement(
+      // Build the page element
+      let element = createElement(
         component as React.ComponentType<any>,
         props,
       );
+
+      // Wrap with layouts (outermost first → we iterate in reverse so the
+      // outermost layout ends up as the outermost wrapper)
+      if (context.layouts && context.layouts.length > 0) {
+        for (let i = context.layouts.length - 1; i >= 0; i--) {
+          element = createElement(
+            context.layouts[i] as React.ComponentType<any>,
+            null,
+            element,
+          );
+        }
+      }
+
       return renderToString(element);
     },
 
-    getHydrationScript(clientEntryPath: string, containerId: string): string {
-      // This script runs in the browser after the SSR'd HTML is loaded.
-      // It imports the component module and hydrates the server-rendered markup.
+    getHydrationScript(clientEntryPath: string, containerId: string, layoutClientPaths?: string[]): string {
+      if (layoutClientPaths && layoutClientPaths.length > 0) {
+        // Generate import statements for each layout
+        const layoutImports = layoutClientPaths
+          .map((p, i) => `import Layout${i} from "${p}";`)
+          .join("\n");
+
+        // Build nested createElement calls: Layout0 wraps Layout1 wraps ... wraps Component
+        // Outermost first, so Layout0 is the root wrapper
+        let inner = "createElement(Component, data)";
+        for (let i = layoutClientPaths.length - 1; i >= 0; i--) {
+          inner = `createElement(Layout${i}, null, ${inner})`;
+        }
+
+        return `
+import { hydrateRoot } from "react-dom/client";
+import { createElement } from "react";
+import Component from "${clientEntryPath}";
+${layoutImports}
+
+const container = document.getElementById("${containerId}");
+const dataEl = document.getElementById("__pyra_data");
+const data = dataEl ? JSON.parse(dataEl.textContent || "{}") : {};
+hydrateRoot(container, ${inner});
+`;
+      }
+
       return `
 import { hydrateRoot } from "react-dom/client";
 import { createElement } from "react";

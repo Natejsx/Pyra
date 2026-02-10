@@ -13,3 +13,4 @@ export { createRequestContext, createBuildTimeRequestContext, escapeJsonForScrip
 export type { CreateRequestContextOptions, BuildTimeRequestContextOptions } from './request-context.js';
 export { ProdServer } from './prod-server.js';
 export type { ProdServerOptions } from './prod-server.js';
+export { runMiddleware } from './middleware.js';

@@ -17,7 +17,7 @@ import {
   HTTP_METHODS,
   getOutDir,
 } from 'pyrajs-shared';
-import { scanRoutes } from './scanner.js';
+import { scanRoutes, type ScanResult, type ScannedLayout, type ScannedMiddleware } from './scanner.js';
 import { createRouter } from './router.js';
 import {
   createBuildTimeRequestContext,
@@ -128,6 +128,14 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     clientEntryPoints[safeName] = entryPath;
   }
 
+  // Add layout files to client build (raw modules for client-side import)
+  const clientLayoutMap = new Map<string, string>(); // layoutId → client entry file path
+  for (const layout of scanResult.layouts) {
+    const safeName = 'layout__' + routeIdToSafeName(layout.id);
+    clientEntryPoints[safeName] = layout.filePath;
+    clientLayoutMap.set(layout.id, layout.filePath);
+  }
+
   // ── 5. Client build ────────────────────────────────────────────────────
   log.info('Building client bundles...');
 
@@ -173,6 +181,18 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     const key = 'api__' + routeIdToSafeName(route.id);
     serverEntryPoints[key] = route.filePath;
     serverEntryRouteMap.set(route.filePath, { routeId: route.id, type: 'api' });
+  }
+
+  // Add middleware files to server build
+  for (const mw of scanResult.middlewares) {
+    const key = 'mw__' + routeIdToSafeName(mw.dirId);
+    serverEntryPoints[key] = mw.filePath;
+  }
+
+  // Add layout files to server build
+  for (const layout of scanResult.layouts) {
+    const key = 'layout__' + routeIdToSafeName(layout.id);
+    serverEntryPoints[key] = layout.filePath;
   }
 
   // Build the externals list: React subpaths + Node builtins
@@ -283,6 +303,22 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     root,
   );
 
+  // Build server output map for middleware and layouts
+  const serverMwLayoutOutputMap = buildServerMwLayoutOutputMap(
+    serverResult.metafile!,
+    scanResult,
+    serverOutDir,
+    root,
+  );
+
+  // Build client output map for layouts
+  const clientLayoutOutputMap = buildClientLayoutOutputMap(
+    clientResult.metafile!,
+    clientLayoutMap,
+    clientOutDir,
+    root,
+  );
+
   // Assemble manifest
   const manifest = assembleManifest(
     adapter,
@@ -296,6 +332,9 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     cacheMap,
     clientResult.metafile!,
     clientOutDir,
+    scanResult,
+    serverMwLayoutOutputMap,
+    clientLayoutOutputMap,
   );
 
   // ── 9. Prerender static routes (SSG) ─────────────────────────────────
@@ -351,12 +390,23 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
           data = loadResult;
         }
 
+        // Load layout components for this route
+        const layoutComponents: unknown[] = [];
+        if (entry.layoutEntries && entry.layoutEntries.length > 0) {
+          for (const layoutServerPath of entry.layoutEntries) {
+            const layoutAbsPath = path.join(serverOutDir, layoutServerPath);
+            const layoutMod = await import(pathToFileURL(layoutAbsPath).href);
+            if (layoutMod.default) layoutComponents.push(layoutMod.default);
+          }
+        }
+
         // Render via adapter
         const headTags: string[] = [];
         const renderContext: RenderContext = {
           url: new URL(pathname, 'http://localhost'),
           params,
           pushHead(tag: string) { headTags.push(tag); },
+          layouts: layoutComponents.length > 0 ? layoutComponents : undefined,
         };
 
         const bodyHtml = await adapter.renderToHTML(component, data, renderContext);
@@ -373,9 +423,12 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
         const serializedData = escapeJsonForScript(JSON.stringify(hydrationData));
         const dataScript = `<script id="__pyra_data" type="application/json">${serializedData}</script>`;
 
-        // Build hydration script
+        // Build hydration script (with layout client paths if present)
         const clientEntryUrl = base + entry.clientEntry;
-        const hydrationScript = adapter.getHydrationScript(clientEntryUrl, containerId);
+        const layoutClientUrls = entry.layoutClientEntries
+          ? entry.layoutClientEntries.map(p => base + p)
+          : undefined;
+        const hydrationScript = adapter.getHydrationScript(clientEntryUrl, containerId, layoutClientUrls);
 
         // Assemble full HTML
         let html = shell;
@@ -457,6 +510,22 @@ function routeIdToSafeName(routeId: string): string {
     .replace(/\]/g, '_')              // Replace ] with _
     .replace(/\.\.\./g, '_rest')      // [...rest] → _rest
     .replace(/\//g, '__');             // / → __
+}
+
+/**
+ * Get all ancestor directory IDs from root to the given route ID.
+ * '/blog/[slug]' → ['/', '/blog', '/blog/[slug]']
+ */
+function getAncestorDirIds(routeId: string): string[] {
+  if (routeId === '/') return ['/'];
+  const segments = routeId.split('/').filter(Boolean);
+  const ancestors: string[] = ['/'];
+  let current = '';
+  for (const seg of segments) {
+    current += '/' + seg;
+    ancestors.push(current);
+  }
+  return ancestors;
 }
 
 /**
@@ -542,6 +611,69 @@ function buildServerOutputMap(
 }
 
 /**
+ * Build server output map for middleware and layout files.
+ * Returns filePath → relative server output path.
+ */
+function buildServerMwLayoutOutputMap(
+  meta: esbuild.Metafile,
+  scanResult: ScanResult,
+  serverOutDir: string,
+  root: string,
+): Map<string, string> {
+  // Collect all middleware + layout source file paths
+  const knownPaths = new Set<string>();
+  for (const mw of scanResult.middlewares) knownPaths.add(mw.filePath);
+  for (const layout of scanResult.layouts) knownPaths.add(layout.filePath);
+
+  const result = new Map<string, string>();
+
+  for (const [outputPath, outputMeta] of Object.entries(meta.outputs)) {
+    if (!outputMeta.entryPoint) continue;
+    const entryAbsolute = path.resolve(root, outputMeta.entryPoint);
+    if (!knownPaths.has(entryAbsolute)) continue;
+
+    const relativePath = path.relative(serverOutDir, path.resolve(root, outputPath))
+      .split(path.sep).join('/');
+    result.set(entryAbsolute, relativePath);
+  }
+
+  return result;
+}
+
+/**
+ * Build client output map for layout files.
+ * Returns layoutId → relative client output path.
+ */
+function buildClientLayoutOutputMap(
+  meta: esbuild.Metafile,
+  clientLayoutMap: Map<string, string>,
+  clientOutDir: string,
+  root: string,
+): Map<string, string> {
+  // Invert: normalize file path → layoutId
+  const pathToLayoutId = new Map<string, string>();
+  for (const [layoutId, filePath] of clientLayoutMap) {
+    const normalized = path.relative(root, filePath).split(path.sep).join('/');
+    pathToLayoutId.set(normalized, layoutId);
+  }
+
+  const result = new Map<string, string>();
+  const clientDir = path.dirname(clientOutDir); // dist/client/
+
+  for (const [outputPath, outputMeta] of Object.entries(meta.outputs)) {
+    if (!outputMeta.entryPoint) continue;
+    const layoutId = pathToLayoutId.get(outputMeta.entryPoint);
+    if (!layoutId) continue;
+
+    const relativePath = path.relative(clientDir, path.resolve(root, outputPath))
+      .split(path.sep).join('/');
+    result.set(layoutId, relativePath);
+  }
+
+  return result;
+}
+
+/**
  * Assemble the final RouteManifest from all collected data.
  */
 function assembleManifest(
@@ -556,8 +688,47 @@ function assembleManifest(
   cacheMap: Map<string, CacheConfig>,
   clientMeta: esbuild.Metafile,
   clientOutDir: string,
+  scanResult: ScanResult,
+  serverMwLayoutOutputMap: Map<string, string>,
+  clientLayoutOutputMap: Map<string, string>,
 ): RouteManifest {
   const routes: Record<string, ManifestRouteEntry> = {};
+
+  // Build lookup: middleware dirId → server output relative path
+  const mwServerPaths = new Map<string, string>();
+  for (const mw of scanResult.middlewares) {
+    const serverPath = serverMwLayoutOutputMap.get(mw.filePath);
+    if (serverPath) mwServerPaths.set(mw.dirId, serverPath);
+  }
+
+  // Build lookup: layout id → server output relative path
+  const layoutServerPaths = new Map<string, string>();
+  for (const layout of scanResult.layouts) {
+    const serverPath = serverMwLayoutOutputMap.get(layout.filePath);
+    if (serverPath) layoutServerPaths.set(layout.id, serverPath);
+  }
+
+  // Helper: resolve layout chain for a route (outermost first)
+  function resolveLayoutChain(routeId: string): string[] {
+    const ancestors = getAncestorDirIds(routeId);
+    const chain: string[] = [];
+    for (const dirId of ancestors) {
+      if (layoutServerPaths.has(dirId)) chain.push(dirId);
+    }
+    return chain;
+  }
+
+  // Helper: resolve middleware chain for a route
+  function resolveMiddlewareBundledPaths(middlewarePaths: string[]): string[] {
+    const result: string[] = [];
+    for (const mw of scanResult.middlewares) {
+      if (middlewarePaths.includes(mw.filePath)) {
+        const serverPath = mwServerPaths.get(mw.dirId);
+        if (serverPath) result.push(serverPath);
+      }
+    }
+    return result;
+  }
 
   // Page routes
   for (const route of router.pageRoutes()) {
@@ -565,6 +736,15 @@ function assembleManifest(
     const serverEntry = serverOutputMap.get(route.id);
 
     const routeCache = cacheMap.get(route.id);
+    const layoutChain = resolveLayoutChain(route.id);
+    const layoutEntries = layoutChain
+      .map(id => layoutServerPaths.get(id)!)
+      .filter(Boolean);
+    const layoutClientEntries = layoutChain
+      .map(id => clientLayoutOutputMap.get(id)!)
+      .filter(Boolean);
+    const mwBundled = resolveMiddlewareBundledPaths(route.middlewarePaths);
+
     routes[route.id] = {
       id: route.id,
       pattern: route.pattern,
@@ -575,21 +755,25 @@ function assembleManifest(
       ssrEntry: serverEntry,
       hasLoad: hasLoadMap.get(route.id) || false,
       cache: routeCache,
-      layouts: route.layoutId ? [route.layoutId] : undefined,
-      middleware: route.middlewarePaths.length ? route.middlewarePaths : undefined,
+      layouts: layoutChain.length ? layoutChain : undefined,
+      layoutEntries: layoutEntries.length ? layoutEntries : undefined,
+      layoutClientEntries: layoutClientEntries.length ? layoutClientEntries : undefined,
+      middleware: mwBundled.length ? mwBundled : undefined,
     };
   }
 
   // API routes
   for (const route of router.apiRoutes()) {
     const serverEntry = serverOutputMap.get(route.id);
+    const mwBundled = resolveMiddlewareBundledPaths(route.middlewarePaths);
+
     routes[route.id] = {
       id: route.id,
       pattern: route.pattern,
       type: 'api',
       serverEntry,
       methods: apiMethodsMap.get(route.id),
-      middleware: route.middlewarePaths.length ? route.middlewarePaths : undefined,
+      middleware: mwBundled.length ? mwBundled : undefined,
     };
   }
 

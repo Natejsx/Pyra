@@ -25,13 +25,21 @@ export interface ScanResult {
 
 // Helper functions
 
-/** Convert a filesystem path segment to a route ID segment. */
+/** Check if a directory name is a route group: (name) */
+function isRouteGroup(name: string): boolean {
+  return /^\(.+\)$/.test(name);
+}
+
+/** Convert a filesystem path segment to a route ID segment, stripping route groups. */
 function toRouteId(dirPath: string, routesDir: string): string {
   const rel = relative(routesDir, dirPath);
   if (rel === "" || rel === ".") return "/";
   // Normalize to posix separators
   const posixRel = rel.split(sep).join(posix.sep);
-  return "/" + posixRel;
+  // Strip route group segments: (marketing)/pricing → pricing
+  const segments = posixRel.split("/").filter((s) => !isRouteGroup(s));
+  if (segments.length === 0) return "/";
+  return "/" + segments.join("/");
 }
 
 /** Convert a route ID to a URL pattern: /blog/[slug] → /blog/:slug, /api/auth/[...path] → /api/auth/*path */
@@ -107,6 +115,9 @@ export async function scanRoutes(
     layouts,
     middlewares,
   );
+
+  // Phase 1b: Validate no route ID collisions (from route groups or otherwise)
+  validateNoCollisions(routes, layouts, middlewares);
 
   // Phase 2: Compute layout and middleware ancestry for each route
   resolveAncestry(routes, layouts, middlewares);
@@ -212,6 +223,53 @@ async function walkDirectory(
         middlewares,
       );
     }
+  }
+}
+
+/**
+ * Validate that no two routes, layouts, or middlewares resolve to the same ID.
+ * This can happen when route groups strip to the same path.
+ */
+function validateNoCollisions(
+  routes: RouteNode[],
+  layouts: ScannedLayout[],
+  middlewares: ScannedMiddleware[],
+): void {
+  // Check route ID collisions
+  const routeIds = new Map<string, string>();
+  for (const route of routes) {
+    const existing = routeIds.get(route.id);
+    if (existing) {
+      throw new Error(
+        `Route collision: "${route.filePath}" and "${existing}" both resolve to route ID "${route.id}". ` +
+          `This can happen when route groups like (group) strip to the same path.`,
+      );
+    }
+    routeIds.set(route.id, route.filePath);
+  }
+
+  // Check layout ID collisions
+  const layoutIds = new Map<string, string>();
+  for (const layout of layouts) {
+    const existing = layoutIds.get(layout.id);
+    if (existing) {
+      throw new Error(
+        `Layout collision: "${layout.filePath}" and "${existing}" both resolve to layout ID "${layout.id}".`,
+      );
+    }
+    layoutIds.set(layout.id, layout.filePath);
+  }
+
+  // Check middleware dirId collisions
+  const mwIds = new Map<string, string>();
+  for (const mw of middlewares) {
+    const existing = mwIds.get(mw.dirId);
+    if (existing) {
+      throw new Error(
+        `Middleware collision: "${mw.filePath}" and "${existing}" both resolve to directory ID "${mw.dirId}".`,
+      );
+    }
+    mwIds.set(mw.dirId, mw.filePath);
   }
 }
 

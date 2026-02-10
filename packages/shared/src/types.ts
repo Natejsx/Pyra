@@ -328,6 +328,8 @@ export interface RenderContext {
   params: Record<string, string>;
   /** Adapters call this to append tags into <head>. */
   pushHead(tag: string): void;
+  /** Layout components to wrap the page, outermost first (v0.8+). */
+  layouts?: unknown[];
 }
 
 /**
@@ -370,7 +372,7 @@ export interface PyraAdapter {
    * @param clientEntryPath - The URL path to the client-side route module.
    * @param containerId     - The DOM element ID where the app is mounted.
    */
-  getHydrationScript(clientEntryPath: string, containerId: string): string;
+  getHydrationScript(clientEntryPath: string, containerId: string, layoutClientPaths?: string[]): string;
 
   /**
    * Return the HTML document shell that wraps rendered page content.
@@ -447,6 +449,34 @@ export interface CookieOptions {
   secure?: boolean;
   httpOnly?: boolean;
   sameSite?: "strict" | "lax" | "none";
+}
+
+// ─── Middleware & Layout Types (v0.8) ────────────────────────────────────────
+
+/**
+ * A middleware function that can intercept requests.
+ * Call next() to continue to the next middleware or the route handler.
+ * Return a Response without calling next() to short-circuit.
+ */
+export type Middleware = (
+  context: RequestContext,
+  next: () => Promise<Response>,
+) => Promise<Response> | Response;
+
+/**
+ * The export shape core expects from a middleware.ts file.
+ * The default export is the middleware function.
+ */
+export interface MiddlewareModule {
+  default: Middleware;
+}
+
+/**
+ * The export shape core expects from a layout.tsx file.
+ * The default export is the layout component (opaque to core — passed to adapter).
+ */
+export interface LayoutModule {
+  default: unknown;
 }
 
 /**
@@ -567,7 +597,13 @@ export interface ManifestRouteEntry {
   /** Layout chain IDs (outermost first). */
   layouts?: string[];
 
-  /** Middleware file paths. */
+  /** Paths to server-side layout modules (relative to dist/server/, outermost first). */
+  layoutEntries?: string[];
+
+  /** Paths to client-side layout modules (relative to dist/client/, outermost first). */
+  layoutClientEntries?: string[];
+
+  /** Paths to server-side middleware modules (relative to dist/server/, outermost first). */
   middleware?: string[];
 }
 
