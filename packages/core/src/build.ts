@@ -667,8 +667,11 @@ function printBuildReport(
 
     if (entry.type === 'page') {
       pageCount++;
-      const mode = entry.prerendered ? 'SSG' : 'SSR';
-      if (entry.prerendered) ssgCount++;
+      let mode = 'SSR';
+      if (entry.prerendered) {
+        ssgCount++;
+        mode = entry.prerenderedCount ? `SSG (${entry.prerenderedCount})` : 'SSG';
+      }
 
       // Calculate JS size from manifest assets
       let jsSize = 0;

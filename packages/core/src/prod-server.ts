@@ -276,7 +276,13 @@ export class ProdServer {
         return;
       }
 
-      // 4. Page route → SSR pipeline
+      // 4. Prerendered page → serve static HTML directly
+      if (match.entry.prerendered) {
+        this.servePrerenderedPage(req, res, cleanUrl, match);
+        return;
+      }
+
+      // 5. Dynamic SSR page route
       await this.handlePageRoute(req, res, cleanUrl, match);
     } catch (error) {
       log.error(`Error serving ${cleanUrl}: ${error}`);
@@ -299,6 +305,51 @@ export class ProdServer {
     const content = fs.readFileSync(filePath);
     res.writeHead(200, {
       "Content-Type": contentType,
+      "Content-Length": content.length,
+      "Cache-Control": cacheControl,
+    });
+    res.end(content);
+  }
+
+  // ── Prerendered Page Serving ─────────────────────────────────────────────
+
+  private servePrerenderedPage(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    pathname: string,
+    match: MatchResult,
+  ): void {
+    const { entry, params } = match;
+
+    // For static prerendered pages, use the prerenderedFile path directly.
+    // For dynamic prerendered pages (e.g., /blog/[slug] with multiple paths),
+    // compute the concrete HTML path from the URL.
+    let htmlRelPath: string;
+    if (entry.prerenderedFile && !entry.prerenderedCount) {
+      // Static: single prerendered file
+      htmlRelPath = entry.prerenderedFile;
+    } else {
+      // Dynamic: build path from URL pathname
+      htmlRelPath = pathname === "/"
+        ? "index.html"
+        : pathname.slice(1) + "/index.html";
+    }
+
+    const htmlAbsPath = path.join(this.clientDir, htmlRelPath);
+
+    if (!fs.existsSync(htmlAbsPath)) {
+      // Prerendered file missing — fall back to SSR (shouldn't happen normally)
+      log.warn(`Prerendered file not found for ${pathname}: ${htmlAbsPath}`);
+      res.writeHead(404, { "Content-Type": "text/html" });
+      res.end(this.get404HTML(pathname));
+      return;
+    }
+
+    const content = fs.readFileSync(htmlAbsPath);
+    const cacheControl = buildCacheControlHeader(entry.cache);
+
+    res.writeHead(200, {
+      "Content-Type": "text/html",
       "Content-Length": content.length,
       "Cache-Control": cacheControl,
     });
