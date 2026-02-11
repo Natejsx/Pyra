@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import chokidar, { type FSWatcher } from "chokidar";
 import { log } from "pyrajs-shared";
-import type { PyraConfig, PyraAdapter, RouteGraph, RenderContext, DevServerResult, RouteMatch, Middleware, RouteNode } from "pyrajs-shared";
+import type { PyraConfig, PyraAdapter, RouteGraph, RenderContext, DevServerResult, RouteMatch, Middleware, RouteNode, ErrorPageProps } from "pyrajs-shared";
 import { HTTP_METHODS } from "pyrajs-shared";
 import { runMiddleware } from "./middleware.js";
 import { bundleFile, invalidateDependentCache } from "./bundler.js";
@@ -64,6 +64,9 @@ export class DevServer {
   private pyraTmpDir: string;
   // : verbose flag for static asset trace logging
   private verbose: boolean;
+  // v1.0: Error boundary files and 404 page
+  private errorFiles: Map<string, string> = new Map();
+  private notFoundPage: string | undefined;
 
   constructor(options: DevServerOptions = {}) {
     this.port = options.port || options.config?.port || 3000;
@@ -186,7 +189,7 @@ export class DevServer {
         return;
       }
 
-      // Route-aware SSR pipeline 
+      // Route-aware SSR pipeline
       if (this.adapter && this.router) {
         // v0.9: Trace route matching
         tracer.start("route-match");
@@ -208,13 +211,19 @@ export class DevServer {
           // Load middleware chain
           const chain = await this.loadMiddlewareChain(match.route.middlewarePaths);
 
-          // Run middleware → route handler (with tracing)
-          const response = await runMiddleware(chain, ctx, async () => {
-            if (match.route.type === "api") {
-              return this.handleApiRouteInner(req, ctx, match, tracer);
-            }
-            return this.handlePageRouteInner(req, ctx, cleanUrl, match, tracer);
-          });
+          let response: Response;
+          try {
+            // Run middleware → route handler (with tracing)
+            response = await runMiddleware(chain, ctx, async () => {
+              if (match.route.type === "api") {
+                return this.handleApiRouteInner(req, ctx, match, tracer);
+              }
+              return this.handlePageRouteInner(req, ctx, cleanUrl, match, tracer);
+            });
+          } catch (pipelineError) {
+            // v1.0: Catch errors from middleware/load/render and render error boundary
+            response = await this.renderErrorPage(req, cleanUrl, pipelineError, match.route, match, tracer);
+          }
 
           // Finalize trace and set Server-Timing header
           const trace = tracer.finalize(response.status);
@@ -238,10 +247,21 @@ export class DevServer {
           return;
         }
 
-        // No route matched — log 404 trace
+        // No route matched — render custom 404 page or default
+        const notFoundResponse = await this.renderNotFoundPage(req, cleanUrl, tracer);
         const trace = tracer.finalize(404);
         metricsStore.recordTrace(trace);
         console.log(tracer.toDetailedLog(404));
+
+        const headers = new Headers(notFoundResponse.headers);
+        headers.set("Server-Timing", tracer.toServerTiming());
+        const tracedResponse = new Response(notFoundResponse.body, {
+          status: notFoundResponse.status,
+          statusText: notFoundResponse.statusText,
+          headers,
+        });
+        await this.sendWebResponse(res, tracedResponse);
+        return;
       }
 
       // Static file serving 
@@ -529,10 +549,23 @@ export class DevServer {
 
     // 4. Call the handler with the shared RequestContext
     tracer.start("handler", method);
-    const response = await mod[method](ctx);
-    tracer.end();
-
-    return response;
+    try {
+      const response = await mod[method](ctx);
+      tracer.end();
+      return response;
+    } catch (handlerError) {
+      const msg = handlerError instanceof Error ? handlerError.message : String(handlerError);
+      const stack = handlerError instanceof Error ? handlerError.stack : undefined;
+      tracer.endWithError(msg);
+      // Dev mode: return full error details in JSON
+      return new Response(
+        JSON.stringify({ error: msg, stack }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
   }
 
   // ── Middleware Loading ──────────────────────────────────────────────────────
@@ -653,6 +686,13 @@ export class DevServer {
       [...this.adapter.fileExtensions],
     );
     this.router = createRouter(scanResult);
+
+    // v1.0: Store error boundary files and 404 page reference
+    this.errorFiles.clear();
+    for (const err of scanResult.errors) {
+      this.errorFiles.set(err.dirId, err.filePath);
+    }
+    this.notFoundPage = scanResult.notFoundPage;
 
     // : Print detailed route table at startup
     this.printRouteTable(scanResult);
