@@ -786,6 +786,25 @@ export class DevServer {
       }
       console.log('');
     }
+
+    // Error boundary summary
+    if (scanResult.errors.length > 0) {
+      console.log(`  ${pc.bold('Error Boundaries')}`);
+      console.log(`  ${pc.dim('\u2500'.repeat(64))}`);
+      for (const err of scanResult.errors) {
+        const relPath = path.relative(this.routesDir!, err.filePath);
+        const scope = err.dirId === '/' ? 'all routes (root)' : `${err.dirId}/**`;
+        console.log(`  ${pc.dim(relPath.split(path.sep).join('/'))}  ${pc.dim('\u2192')} ${scope}`);
+      }
+      console.log('');
+    }
+
+    // 404 page
+    if (scanResult.notFoundPage) {
+      const relPath = path.relative(this.routesDir!, scanResult.notFoundPage);
+      console.log(`  ${pc.bold('404 Page')}  ${pc.dim(relPath.split(path.sep).join('/'))}`);
+      console.log('');
+    }
   }
 
   /**
@@ -816,6 +835,162 @@ export class DevServer {
       .map(p => p.pattern);
     if (matching.length <= 3) return matching.join(', ');
     return `${matching.slice(0, 2).join(', ')}, +${matching.length - 2} more`;
+  }
+
+  // ── Error Boundaries (v1.0) ────────────────────────────────────────────────
+
+  /**
+   * Render the nearest error boundary (error.tsx) for a caught error.
+   * Falls back to the default styled error page if no boundary exists
+   * or the boundary itself throws.
+   */
+  private async renderErrorPage(
+    req: http.IncomingMessage,
+    pathname: string,
+    error: unknown,
+    route: RouteNode | null,
+    match: RouteMatch | null,
+    tracer: RequestTracer,
+  ): Promise<Response> {
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+
+    log.error(`Error rendering ${pathname}: ${message}`);
+
+    // Try to find and render the nearest error boundary
+    const errorBoundaryId = route?.errorBoundaryId;
+    if (errorBoundaryId && this.adapter) {
+      const errorFilePath = this.errorFiles.get(errorBoundaryId);
+      if (errorFilePath) {
+        try {
+          tracer.start("error-boundary", errorFilePath);
+          const compiled = await this.compileForServer(errorFilePath);
+          const modUrl = pathToFileURL(compiled).href + `?t=${Date.now()}`;
+          const mod = await import(modUrl);
+
+          if (mod.default) {
+            const errorProps: ErrorPageProps = {
+              message,
+              stack,
+              statusCode: 500,
+              pathname,
+            };
+
+            const headTags: string[] = [];
+            const renderContext: RenderContext = {
+              url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
+              params: match?.params || {},
+              pushHead: (tag) => headTags.push(tag),
+              error: errorProps,
+            };
+
+            const bodyHtml = await this.adapter.renderToHTML(mod.default, errorProps, renderContext);
+            tracer.end();
+
+            const shell = this.adapter.getDocumentShell?.() || DEFAULT_SHELL;
+            let html = shell.replace("__CONTAINER_ID__", this.containerId);
+            html = html.replace("<!--pyra-outlet-->", bodyHtml);
+            html = html.replace("<!--pyra-head-->", headTags.join("\n  "));
+            html = this.injectHMRClient(html);
+
+            return new Response(html, {
+              status: 500,
+              headers: { "Content-Type": "text/html" },
+            });
+          }
+          tracer.end();
+        } catch (renderError) {
+          // Error boundary itself failed — fall through to default
+          const errMsg = renderError instanceof Error ? renderError.message : String(renderError);
+          tracer.endWithError(errMsg);
+          log.error(`Error boundary failed: ${errMsg}`);
+        }
+      }
+    }
+
+    // Fallback: default styled error HTML
+    return new Response(this.getErrorHTML(pathname, error), {
+      status: 500,
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  /**
+   * Render the custom 404 page (404.tsx) or a default styled 404 page.
+   */
+  private async renderNotFoundPage(
+    req: http.IncomingMessage,
+    pathname: string,
+    tracer: RequestTracer,
+  ): Promise<Response> {
+    if (this.notFoundPage && this.adapter) {
+      try {
+        tracer.start("404-page", this.notFoundPage);
+        const compiled = await this.compileForServer(this.notFoundPage);
+        const modUrl = pathToFileURL(compiled).href + `?t=${Date.now()}`;
+        const mod = await import(modUrl);
+
+        if (mod.default) {
+          const headTags: string[] = [];
+          const renderContext: RenderContext = {
+            url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
+            params: {},
+            pushHead: (tag) => headTags.push(tag),
+          };
+
+          const bodyHtml = await this.adapter.renderToHTML(
+            mod.default,
+            { pathname },
+            renderContext,
+          );
+          tracer.end();
+
+          const shell = this.adapter.getDocumentShell?.() || DEFAULT_SHELL;
+          let html = shell.replace("__CONTAINER_ID__", this.containerId);
+          html = html.replace("<!--pyra-outlet-->", bodyHtml);
+          html = html.replace("<!--pyra-head-->", headTags.join("\n  "));
+          html = this.injectHMRClient(html);
+
+          return new Response(html, {
+            status: 404,
+            headers: { "Content-Type": "text/html" },
+          });
+        }
+        tracer.end();
+      } catch (renderError) {
+        const errMsg = renderError instanceof Error ? renderError.message : String(renderError);
+        tracer.endWithError(errMsg);
+        log.error(`Failed to render custom 404 page: ${errMsg}`);
+      }
+    }
+
+    // Fallback: default styled 404
+    return new Response(this.getDefault404HTML(pathname), {
+      status: 404,
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  /**
+   * Default styled 404 page (used when no custom 404.tsx exists).
+   */
+  private getDefault404HTML(pathname: string): string {
+    return `<!DOCTYPE html>
+<html><head><title>404 Not Found</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0;
+         display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+  .container { text-align: center; }
+  h1 { font-size: 4rem; color: #ff6b35; margin: 0; }
+  p { color: #999; margin-top: 1rem; }
+  code { color: #4fc3f7; }
+</style></head>
+<body>
+  <div class="container">
+    <h1>404</h1>
+    <p>Page <code>${pathname}</code> not found</p>
+  </div>
+</body></html>`;
   }
 
   // ── Error page ──────────────────────────────────────────────────────────────
