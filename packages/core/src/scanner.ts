@@ -152,7 +152,7 @@ export async function scanRoutes(
 }
 
 /**
- * Recursively walk a directory, discovering routes, layouts, and middleware.
+ * Recursively walk a directory, discovering routes, layouts, middleware, and error boundaries.
  */
 async function walkDirectory(
   currentDir: string,
@@ -161,20 +161,23 @@ async function walkDirectory(
   routes: RouteNode[],
   layouts: ScannedLayout[],
   middlewares: ScannedMiddleware[],
-): Promise<void> {
+  errors: ScannedError[],
+): Promise<{ notFoundPage?: string }> {
   let entries;
   try {
     entries = await readdir(currentDir, { withFileTypes: true });
   } catch {
     // Directory doesn't exist or isn't readable — not an error for the scanner
-    return;
+    return {};
   }
 
   const dirId = toRouteId(currentDir, routesDir);
+  const isRoot = dirId === "/";
   let hasPage = false;
   let pageFilePath = "";
   let hasRoute = false;
   let routeFilePath = "";
+  let notFoundPage: string | undefined;
 
   // First pass: check for sentinel files in this directory
   for (const entry of entries) {
@@ -196,6 +199,14 @@ async function walkDirectory(
         dirId,
         filePath: join(currentDir, entry.name),
       });
+    } else if (isErrorFile(entry.name, extensions)) {
+      errors.push({
+        dirId,
+        filePath: join(currentDir, entry.name),
+      });
+    } else if (isRoot && isNotFoundFile(entry.name, extensions)) {
+      // 404 page is only recognized at the routes root
+      notFoundPage = join(currentDir, entry.name);
     }
   }
 
@@ -237,16 +248,23 @@ async function walkDirectory(
   // Second pass: recurse into subdirectories
   for (const entry of entries) {
     if (entry.isDirectory()) {
-      await walkDirectory(
+      const childResult = await walkDirectory(
         join(currentDir, entry.name),
         routesDir,
         extensions,
         routes,
         layouts,
         middlewares,
+        errors,
       );
+      // Bubble up notFoundPage from child (shouldn't happen — only root)
+      if (childResult.notFoundPage && !notFoundPage) {
+        notFoundPage = childResult.notFoundPage;
+      }
     }
   }
+
+  return { notFoundPage };
 }
 
 /**
@@ -257,6 +275,7 @@ function validateNoCollisions(
   routes: RouteNode[],
   layouts: ScannedLayout[],
   middlewares: ScannedMiddleware[],
+  errors: ScannedError[],
 ): void {
   // Check route ID collisions
   const routeIds = new Map<string, string>();
@@ -294,6 +313,18 @@ function validateNoCollisions(
     }
     mwIds.set(mw.dirId, mw.filePath);
   }
+
+  // Check error boundary dirId collisions
+  const errorIds = new Map<string, string>();
+  for (const err of errors) {
+    const existing = errorIds.get(err.dirId);
+    if (existing) {
+      throw new Error(
+        `Error boundary collision: "${err.filePath}" and "${existing}" both resolve to directory ID "${err.dirId}".`,
+      );
+    }
+    errorIds.set(err.dirId, err.filePath);
+  }
 }
 
 /**
@@ -310,8 +341,9 @@ function resolveAncestry(
   routes: RouteNode[],
   layouts: ScannedLayout[],
   middlewares: ScannedMiddleware[],
+  errors: ScannedError[],
 ): void {
-  // Index layouts and middlewares by their directory ID for quick lookup
+  // Index layouts, middlewares, and errors by their directory ID for quick lookup
   const layoutByDir = new Map<string, ScannedLayout>();
   for (const layout of layouts) {
     layoutByDir.set(layout.id, layout);
@@ -320,6 +352,11 @@ function resolveAncestry(
   const middlewareByDir = new Map<string, ScannedMiddleware>();
   for (const mw of middlewares) {
     middlewareByDir.set(mw.dirId, mw);
+  }
+
+  const errorByDir = new Map<string, ScannedError>();
+  for (const err of errors) {
+    errorByDir.set(err.dirId, err);
   }
 
   for (const route of routes) {
@@ -336,6 +373,15 @@ function resolveAncestry(
       }
     }
 
+    // Find nearest error boundary: walk from innermost to outermost
+    let nearestErrorId: string | undefined;
+    for (let i = ancestorDirs.length - 1; i >= 0; i--) {
+      if (errorByDir.has(ancestorDirs[i])) {
+        nearestErrorId = ancestorDirs[i];
+        break;
+      }
+    }
+
     // Collect middleware paths: outermost (root) to innermost (route's dir)
     const mwPaths: string[] = [];
     for (const dirId of ancestorDirs) {
@@ -348,6 +394,7 @@ function resolveAncestry(
     // RouteNode is defined as readonly, so we cast to assign during construction
     (route as { layoutId?: string }).layoutId = nearestLayoutId;
     (route as { middlewarePaths: string[] }).middlewarePaths = mwPaths;
+    (route as { errorBoundaryId?: string }).errorBoundaryId = nearestErrorId;
   }
 }
 
