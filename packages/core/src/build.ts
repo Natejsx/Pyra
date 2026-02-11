@@ -411,7 +411,7 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
           pathname = pathname.replace(`:${key}`, value);
         }
 
-        // Call load() if present
+        // Call load() if present (v1.0: wrapped in try-catch)
         let data: unknown = null;
         if (entry.hasLoad && typeof mod.load === 'function') {
           const ctx = createBuildTimeRequestContext({
@@ -419,10 +419,16 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
             params,
             routeId,
           });
-          const loadResult = await mod.load(ctx);
-          // If load() returns a Response, skip this page (e.g., redirect)
-          if (loadResult instanceof Response) continue;
-          data = loadResult;
+          try {
+            const loadResult = await mod.load(ctx);
+            // If load() returns a Response, skip this page (e.g., redirect)
+            if (loadResult instanceof Response) continue;
+            data = loadResult;
+          } catch (loadError) {
+            log.warn(`Prerender load() failed for ${pathname}: ${loadError instanceof Error ? loadError.message : String(loadError)}`);
+            log.warn(`  Skipping prerender for ${pathname} — will fall back to SSR.`);
+            continue;
+          }
         }
 
         // Load layout components for this route
@@ -444,7 +450,14 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
           layouts: layoutComponents.length > 0 ? layoutComponents : undefined,
         };
 
-        const bodyHtml = await adapter.renderToHTML(component, data, renderContext);
+        let bodyHtml: string;
+        try {
+          bodyHtml = await adapter.renderToHTML(component, data, renderContext);
+        } catch (renderError) {
+          log.warn(`Prerender render failed for ${pathname}: ${renderError instanceof Error ? renderError.message : String(renderError)}`);
+          log.warn(`  Skipping prerender for ${pathname} — will fall back to SSR.`);
+          continue;
+        }
 
         // Build asset tags from manifest
         const assetTags = buildPrerenderAssetTags(entry, base);
@@ -728,6 +741,7 @@ function assembleManifest(
   scanResult: ScanResult,
   serverMwLayoutOutputMap: Map<string, string>,
   clientLayoutOutputMap: Map<string, string>,
+  clientErrorOutputMap: Map<string, string>,
 ): RouteManifest {
   const routes: Record<string, ManifestRouteEntry> = {};
 
@@ -743,6 +757,13 @@ function assembleManifest(
   for (const layout of scanResult.layouts) {
     const serverPath = serverMwLayoutOutputMap.get(layout.filePath);
     if (serverPath) layoutServerPaths.set(layout.id, serverPath);
+  }
+
+  // v1.0: Build lookup: error boundary dirId → server output relative path
+  const errorServerPaths = new Map<string, string>();
+  for (const err of scanResult.errors) {
+    const serverPath = serverMwLayoutOutputMap.get(err.filePath);
+    if (serverPath) errorServerPaths.set(err.dirId, serverPath);
   }
 
   // Helper: resolve layout chain for a route (outermost first)
@@ -782,6 +803,14 @@ function assembleManifest(
       .filter(Boolean);
     const mwBundled = resolveMiddlewareBundledPaths(route.middlewarePaths);
 
+    // v1.0: Resolve error boundary for this route
+    const errorBoundaryEntry = route.errorBoundaryId
+      ? errorServerPaths.get(route.errorBoundaryId)
+      : undefined;
+    const errorBoundaryClientEntry = route.errorBoundaryId
+      ? clientErrorOutputMap.get(route.errorBoundaryId)
+      : undefined;
+
     routes[route.id] = {
       id: route.id,
       pattern: route.pattern,
@@ -796,6 +825,8 @@ function assembleManifest(
       layoutEntries: layoutEntries.length ? layoutEntries : undefined,
       layoutClientEntries: layoutClientEntries.length ? layoutClientEntries : undefined,
       middleware: mwBundled.length ? mwBundled : undefined,
+      errorBoundaryEntry,
+      errorBoundaryClientEntry,
     };
   }
 
@@ -804,6 +835,14 @@ function assembleManifest(
     const serverEntry = serverOutputMap.get(route.id);
     const mwBundled = resolveMiddlewareBundledPaths(route.middlewarePaths);
 
+    // v1.0: Resolve error boundary for API routes too
+    const errorBoundaryEntry = route.errorBoundaryId
+      ? errorServerPaths.get(route.errorBoundaryId)
+      : undefined;
+    const errorBoundaryClientEntry = route.errorBoundaryId
+      ? clientErrorOutputMap.get(route.errorBoundaryId)
+      : undefined;
+
     routes[route.id] = {
       id: route.id,
       pattern: route.pattern,
@@ -811,6 +850,20 @@ function assembleManifest(
       serverEntry,
       methods: apiMethodsMap.get(route.id),
       middleware: mwBundled.length ? mwBundled : undefined,
+      errorBoundaryEntry,
+      errorBoundaryClientEntry,
+    };
+  }
+
+  // v1.0: Add 404 page to manifest if present
+  if (scanResult.notFoundPage) {
+    const notFoundServerPath = serverMwLayoutOutputMap.get(scanResult.notFoundPage);
+    routes['__404'] = {
+      id: '__404',
+      pattern: '/__404',
+      type: 'page',
+      ssrEntry: notFoundServerPath,
+      hasLoad: false,
     };
   }
 
