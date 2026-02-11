@@ -5,16 +5,15 @@ import { dirname, join } from 'node:path';
 import pc from 'picocolors';
 
 /**
- * Start a high-precision timer. Returns a function that returns elapsed milliseconds.
+ * Start a high-precision timer. 
+ * @Returns a function that returns elapsed milliseconds.
  */
 export function startTimer(): () => number {
   const start = performance.now();
   return () => performance.now() - start;
 }
 
-/**
- * Format duration in milliseconds to human-readable string
- */
+// Format duration in milliseconds to human-readable string
 export function formatDuration(ms: number): string {
   if (ms < 1000) {
     return `${Math.round(ms)} ms`;
@@ -22,9 +21,7 @@ export function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
-/**
- * Get package version from CLI's package.json
- */
+// Get package version from CLI's package.json
 export function getVersion(): string {
   try {
     // Get the current file's directory

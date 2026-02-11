@@ -45,7 +45,7 @@
   "dependencies": {
     "pyrajs-shared": "workspace:*",
     "chokidar": "^4.0.3",
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.25.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

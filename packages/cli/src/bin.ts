@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import path from "node:path";
-import { log, loadConfig, getPort, getOutDir, findAvailablePort } from "pyrajs-shared";
+import {
+  log,
+  loadConfig,
+  getPort,
+  getOutDir,
+  findAvailablePort,
+} from "pyrajs-shared";
 import { DevServer, build, ProdServer } from "pyrajs-core";
 import { createReactAdapter } from "pyrajs-adapter-react";
 import { input, select, confirm } from "@inquirer/prompts";
@@ -16,12 +22,17 @@ import {
   useColor,
   getVersion,
 } from "./utils/reporter.js";
-import { printDevBanner, printProdBanner, detectCapabilities } from "./utils/dev-banner.js";
+import {
+  printDevBanner,
+  printProdBanner,
+  detectCapabilities,
+} from "./utils/dev-banner.js";
 import { setupKeyboardShortcuts } from "./utils/keyboard.js";
 import type { TailwindPreset } from "./utils/tailwind.js";
 import { graphCommand } from "./commands/graph.js";
 import { doctorCommand } from "./commands/doctor.js";
 import type { OutputFormat } from "./graph/types.js";
+import chalk from "chalk";
 
 const program = new Command();
 
@@ -29,19 +40,20 @@ const program = new Command();
 program
   .name("pyra")
   .description(
-    `
+    chalk.red(`
 ██████╗ ██╗   ██╗██████╗  █████╗
 ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔══██╗
 ██████╔╝ ╚████╔╝ ██████╔╝███████║
 ██╔═══╝   ╚██╔╝  ██╔══██╗██╔══██║
 ██║        ██║   ██║  ██║██║  ██║
 ╚═╝        ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
-
+`) +
+      chalk.dim(`
 Ignite your web stack.
 Next-gen full-stack framework.
-`,
+`),
   )
-  .version("0.4.0");
+  .version("0.9.4");
 
 program
   .command("dev")
@@ -67,7 +79,9 @@ program
       });
 
       // CLI options override config file
-      requestedPort = options.port ? parseInt(options.port, 10) : getPort(config);
+      requestedPort = options.port
+        ? parseInt(options.port, 10)
+        : getPort(config);
 
       // v0.2: Set up route-aware SSR with the React adapter
       const root = config.root || process.cwd();
@@ -77,12 +91,19 @@ program
       // Auto-find available port
       const actualPort = await findAvailablePort(requestedPort);
 
-      const server = new DevServer({ port: actualPort, root, adapter, routesDir });
+      const server = new DevServer({
+        port: actualPort,
+        root,
+        adapter,
+        routesDir,
+      });
       const result = await server.start();
 
       // Add port fallback warning if port changed
       if (actualPort !== requestedPort) {
-        result.warnings.unshift(`Port ${requestedPort} in use, using ${actualPort}`);
+        result.warnings.unshift(
+          `Port ${requestedPort} in use, using ${actualPort}`,
+        );
       }
 
       // Print styled startup banner
@@ -101,7 +122,7 @@ program
         if (isShuttingDown) return;
         isShuttingDown = true;
 
-        console.log('');
+        console.log("");
         log.info("Shutting down dev server...");
 
         server
@@ -153,8 +174,10 @@ program
       }
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
-      if (err.message?.includes('No available port found')) {
-        log.error(`No available port found starting from ${requestedPort ?? 3000}`);
+      if (err.message?.includes("No available port found")) {
+        log.error(
+          `No available port found starting from ${requestedPort ?? 3000}`,
+        );
       } else {
         log.error(`Failed to start dev server: ${error}`);
       }
@@ -274,7 +297,7 @@ program
         if (isShuttingDown) return;
         isShuttingDown = true;
 
-        console.log('');
+        console.log("");
         log.info("Shutting down production server...");
 
         server
@@ -296,7 +319,9 @@ program
         setupKeyboardShortcuts({
           onRestart: async () => {
             // No restart in production — just print a hint
-            log.info("Restart is not available in production. Stop and re-run 'pyra start'.");
+            log.info(
+              "Restart is not available in production. Stop and re-run 'pyra start'.",
+            );
           },
           onQuit: () => shutdown(),
           onOpen: () => {

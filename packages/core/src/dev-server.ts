@@ -90,10 +90,8 @@ export class DevServer {
     });
     this.setupWebSocket();
   }
-
-  /**
-   * Handle incoming HTTP requests
-   */
+ 
+  // Handle incoming HTTP requests
   private async handleRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -104,7 +102,7 @@ export class DevServer {
     // Remove query parameters
     const cleanUrl = url.split("?")[0];
 
-    // : Create tracer for every request in dev mode
+    // Create tracer for every request in dev mode
     const tracer = new RequestTracer(method, cleanUrl);
 
     try {
@@ -135,7 +133,7 @@ export class DevServer {
         return;
       }
 
-      // v0.9: Trace API endpoints
+      // Trace API endpoints
       if (cleanUrl === "/_pyra/api/traces") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(metricsStore.getRecentTraces()));
@@ -168,7 +166,7 @@ export class DevServer {
         return;
       }
 
-      // ── v0.2: Serve client-side module for hydration ──────────────────
+      // Serve client-side module for hydration 
       if (cleanUrl.startsWith("/__pyra/modules/")) {
         const modulePath = cleanUrl.slice("/__pyra/modules/".length);
         const absolutePath = path.resolve(this.root, modulePath);
@@ -188,7 +186,7 @@ export class DevServer {
         return;
       }
 
-      // ── v0.2: Route-aware SSR pipeline ────────────────────────────────
+      // Route-aware SSR pipeline 
       if (this.adapter && this.router) {
         // v0.9: Trace route matching
         tracer.start("route-match");
@@ -218,7 +216,7 @@ export class DevServer {
             return this.handlePageRouteInner(req, ctx, cleanUrl, match, tracer);
           });
 
-          // : Finalize trace and set Server-Timing header
+          // Finalize trace and set Server-Timing header
           const trace = tracer.finalize(response.status);
           metricsStore.recordTrace(trace);
           console.log(tracer.toDetailedLog(response.status));
@@ -246,7 +244,7 @@ export class DevServer {
         console.log(tracer.toDetailedLog(404));
       }
 
-      // ── Static file serving (existing behavior) ───────────────────────
+      // Static file serving 
       tracer.start("static");
       let filePath = path.join(
         this.root,
@@ -328,7 +326,7 @@ export class DevServer {
         console.log(tracer.toDetailedLog(200));
       }
     } catch (error) {
-      // : Log error trace
+      // Log error trace
       const errMsg = error instanceof Error ? error.message : String(error);
       tracer.endWithError(errMsg);
       const trace = tracer.finalize(500);
@@ -341,8 +339,7 @@ export class DevServer {
     }
   }
 
-  // ── SSR Pipeline ────────────────────────────────────────────────────────────
-
+  // SSR Pipeline 
   /**
    * Inner page route handler that returns a Response.
    * Called from within the middleware chain.
@@ -357,11 +354,11 @@ export class DevServer {
     const { route, params } = match;
     const adapter = this.adapter!;
 
-    // 1. Compile the route module for server (Node target, framework external)
+    // Compile the route module for server (Node target, framework external)
     tracer.start("compile");
     const serverModule = await this.compileForServer(route.filePath);
 
-    // 2. Import the compiled module
+    // Import the compiled module
     const moduleUrl =
       pathToFileURL(serverModule).href + `?t=${Date.now()}`;
     const mod = await import(moduleUrl);
@@ -375,7 +372,7 @@ export class DevServer {
       );
     }
 
-    // 3. Call load() if exported (v0.3)
+    // Call load() if exported
     let data: unknown = null;
     if (typeof mod.load === "function") {
       tracer.start("load");
@@ -397,7 +394,7 @@ export class DevServer {
       }
     }
 
-    // 4. Load layout components
+    // Load layout components
     const layoutComponents: unknown[] = [];
     const layoutClientUrls: string[] = [];
     if (match.layouts && match.layouts.length > 0) {
@@ -417,7 +414,7 @@ export class DevServer {
       }
     }
 
-    // 5. Build RenderContext
+    // Build RenderContext
     const headTags: string[] = [];
     const renderContext: RenderContext = {
       url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
@@ -428,27 +425,27 @@ export class DevServer {
       layouts: layoutComponents.length > 0 ? layoutComponents : undefined,
     };
 
-    // 6. Call adapter.renderToHTML() with load data
+    // Call adapter.renderToHTML() with load data
     tracer.start("render", `${adapter.name} SSR`);
     const bodyHtml = await adapter.renderToHTML(component, data, renderContext);
     tracer.end();
 
-    // 7. Get document shell
+    // Get document shell
     const shell = adapter.getDocumentShell?.() || DEFAULT_SHELL;
 
-    // 8. Build the client module URL for hydration
+    // Build the client module URL for hydration
     const clientModulePath = path.relative(this.root, route.filePath);
     const clientModuleUrl =
       "/__pyra/modules/" + clientModulePath.split(path.sep).join("/");
 
-    // 9. Get hydration script from adapter (with layout paths if present)
+    // Get hydration script from adapter (with layout paths if present)
     const hydrationScript = adapter.getHydrationScript(
       clientModuleUrl,
       this.containerId,
       layoutClientUrls.length > 0 ? layoutClientUrls : undefined,
     );
 
-    // 10. Serialize data for client hydration
+    // Serialize data for client hydration
     tracer.start("inject-assets");
     const hydrationData: Record<string, unknown> = {};
     if (data && typeof data === "object") {
@@ -458,7 +455,7 @@ export class DevServer {
     const serializedData = escapeJsonForScript(JSON.stringify(hydrationData));
     const dataScript = `<script id="__pyra_data" type="application/json">${serializedData}</script>`;
 
-    // 11. Assemble the full HTML
+    // Assemble the full HTML
     let html = shell;
     html = html.replace("__CONTAINER_ID__", this.containerId);
     html = html.replace("<!--pyra-outlet-->", bodyHtml);
