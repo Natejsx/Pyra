@@ -20,6 +20,7 @@ import {
   getSetCookieHeaders,
   escapeJsonForScript,
 } from "./request-context.js";
+import { RequestTracer, shouldTrace } from "./tracer.js";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -275,24 +276,46 @@ export class ProdServer {
     res: http.ServerResponse,
   ): Promise<void> {
     const url = req.url || "/";
+    const method = req.method || "GET";
     const cleanUrl = url.split("?")[0];
+
+    // v0.9: Conditionally create tracer based on config
+    const tracing = shouldTrace(
+      { headers: req.headers as any },
+      this.config?.trace,
+      "production",
+    );
+    const tracer = tracing ? new RequestTracer(method, cleanUrl) : null;
 
     try {
       // 1. Try serving static assets from dist/client/
+      tracer?.start("static-check");
       const staticPath = path.join(this.clientDir, cleanUrl);
-      if (fs.existsSync(staticPath) && fs.statSync(staticPath).isFile()) {
+      const isStaticFile = fs.existsSync(staticPath) && fs.statSync(staticPath).isFile();
+      tracer?.end();
+
+      if (isStaticFile) {
         this.serveStaticFile(res, staticPath, cleanUrl);
         return;
       }
 
       // 2. Match against manifest routes
+      tracer?.start("route-match");
       const match = this.matcher.match(cleanUrl);
+      tracer?.end();
 
       if (!match) {
+        if (tracer) {
+          tracer.start("route-match", "(no match)");
+          tracer.end();
+        }
         res.writeHead(404, { "Content-Type": "text/html" });
         res.end(this.get404HTML(cleanUrl));
         return;
       }
+
+      tracer?.start("route-match", match.entry.id);
+      tracer?.end();
 
       // 3. Build RequestContext
       const ctx = createRequestContext({
@@ -309,20 +332,44 @@ export class ProdServer {
       // 5. Run middleware → route handler
       const response = await runMiddleware(chain, ctx, async () => {
         if (match.entry.type === "api") {
-          return this.handleApiRouteInner(req, ctx, match);
+          tracer?.start("handler", method);
+          const apiResponse = await this.handleApiRouteInner(req, ctx, match);
+          tracer?.end();
+          return apiResponse;
         }
         if (match.entry.prerendered) {
-          return this.servePrerenderedPageInner(cleanUrl, match);
+          tracer?.start("serve-prerendered");
+          const preResponse = this.servePrerenderedPageInner(cleanUrl, match);
+          tracer?.end();
+          return preResponse;
         }
-        return this.handlePageRouteInner(req, ctx, cleanUrl, match);
+        return this.handlePageRouteInner(req, ctx, cleanUrl, match, tracer);
       });
 
-      // 6. Send response + cookies
-      await this.sendWebResponse(res, response);
+      // 6. v0.9: Add Server-Timing header if tracing
+      if (tracer) {
+        const trace = tracer.finalize(response.status);
+        const headers = new Headers(response.headers);
+        headers.set("Server-Timing", tracer.toServerTiming());
+        const tracedResponse = new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+        await this.sendWebResponse(res, tracedResponse);
+      } else {
+        await this.sendWebResponse(res, response);
+      }
+
       for (const cookie of getSetCookieHeaders(ctx)) {
         res.appendHeader("Set-Cookie", cookie);
       }
     } catch (error) {
+      if (tracer) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        tracer.endWithError(errMsg);
+        tracer.finalize(500);
+      }
       log.error(`Error serving ${cleanUrl}: ${error}`);
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Internal Server Error");
@@ -442,6 +489,7 @@ export class ProdServer {
     ctx: import("pyrajs-shared").RequestContext,
     pathname: string,
     match: MatchResult,
+    tracer: RequestTracer | null,
   ): Promise<Response> {
     const { entry, params } = match;
 
@@ -466,11 +514,14 @@ export class ProdServer {
     // Call load() if present
     let data: unknown = null;
     if (entry.hasLoad && typeof mod.load === "function") {
+      tracer?.start("load");
       const loadResult = await mod.load(ctx);
       if (loadResult instanceof Response) {
+        tracer?.end();
         return loadResult;
       }
       data = loadResult;
+      tracer?.end();
     }
 
     // Load layout components
@@ -494,12 +545,15 @@ export class ProdServer {
       layouts: layoutComponents.length > 0 ? layoutComponents : undefined,
     };
 
+    tracer?.start("render", `${this.adapter.name} SSR`);
     const bodyHtml = await this.adapter.renderToHTML(
       component,
       data,
       renderContext,
     );
+    tracer?.end();
 
+    tracer?.start("inject-assets");
     const shell = this.adapter.getDocumentShell?.() || DEFAULT_SHELL;
     const assetTags = buildAssetTags(entry, this.manifest.base);
 
@@ -536,6 +590,7 @@ export class ProdServer {
       "</body>",
       `  ${dataScript}\n  ${assetTags.body}\n  <script type="module">${hydrationScript}</script>\n</body>`,
     );
+    tracer?.end();
 
     return new Response(html, {
       status: 200,
