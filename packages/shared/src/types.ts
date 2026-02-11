@@ -505,6 +505,30 @@ export interface LayoutModule {
 }
 
 /**
+ * The export shape core expects from an error.tsx file (v1.0+).
+ * The default export is the error page component.
+ * It receives ErrorPageProps as its props.
+ */
+export interface ErrorModule {
+  default: unknown;
+}
+
+/**
+ * Props passed to error page components by the framework.
+ * Core constructs this and hands it to adapter.renderToHTML() as the data argument.
+ */
+export interface ErrorPageProps {
+  /** Error message. In dev: full message. In prod: generic message. */
+  message: string;
+  /** Error stack trace. Only present in development mode. */
+  stack?: string;
+  /** HTTP status code (e.g., 500, 404). */
+  statusCode: number;
+  /** The request pathname that caused the error. */
+  pathname: string;
+}
+
+/**
  * The export shape core expects from a page route file (e.g., page.tsx).
  * The default export is opaque to core — it's passed to the adapter.
  */
