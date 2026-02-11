@@ -62,7 +62,7 @@ export class DevServer {
   private serverCompileCache: Map<string, { outPath: string; timestamp: number }> =
     new Map();
   private pyraTmpDir: string;
-  // v0.9: verbose flag for static asset trace logging
+  // : verbose flag for static asset trace logging
   private verbose: boolean;
 
   constructor(options: DevServerOptions = {}) {
@@ -75,7 +75,7 @@ export class DevServer {
     this.pyraTmpDir = path.join(this.root, ".pyra", "server");
     this.verbose = false;
 
-    // v0.9: Configure trace buffer size
+    // : Configure trace buffer size
     if (options.config?.trace?.bufferSize) {
       metricsStore.setTraceBufferSize(options.config.trace.bufferSize);
     }
@@ -104,7 +104,7 @@ export class DevServer {
     // Remove query parameters
     const cleanUrl = url.split("?")[0];
 
-    // v0.9: Create tracer for every request in dev mode
+    // : Create tracer for every request in dev mode
     const tracer = new RequestTracer(method, cleanUrl);
 
     try {
@@ -218,7 +218,7 @@ export class DevServer {
             return this.handlePageRouteInner(req, ctx, cleanUrl, match, tracer);
           });
 
-          // v0.9: Finalize trace and set Server-Timing header
+          // : Finalize trace and set Server-Timing header
           const trace = tracer.finalize(response.status);
           metricsStore.recordTrace(trace);
           console.log(tracer.toDetailedLog(response.status));
@@ -328,7 +328,7 @@ export class DevServer {
         console.log(tracer.toDetailedLog(200));
       }
     } catch (error) {
-      // v0.9: Log error trace
+      // : Log error trace
       const errMsg = error instanceof Error ? error.message : String(error);
       tracer.endWithError(errMsg);
       const trace = tracer.finalize(500);
@@ -657,12 +657,12 @@ export class DevServer {
     );
     this.router = createRouter(scanResult);
 
-    // v0.9: Print detailed route table at startup
+    // : Print detailed route table at startup
     this.printRouteTable(scanResult);
   }
 
   /**
-   * v0.9: Print the dev startup route table.
+   * : Print the dev startup route table.
    */
   private printRouteTable(scanResult: import("./scanner.js").ScanResult): void {
     if (!this.router) return;

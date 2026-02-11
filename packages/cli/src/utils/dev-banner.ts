@@ -77,9 +77,7 @@ function formatUrl(url: string, color: boolean): string {
   return pc.cyan(url);
 }
 
-/**
- * Print the Vite-inspired dev server startup banner.
- */
+// Print the Vite-inspired dev server startup banner
 export function printDevBanner(opts: DevBannerOptions): void {
   if (opts.silent) return;
 
@@ -112,7 +110,7 @@ export function printDevBanner(opts: DevBannerOptions): void {
   const time = formatDuration(result.startupMs);
   if (color) {
     lines.push(
-      `  ${pc.bold(pc.green('PYRA'))} ${pc.green(`v${version}`)}  ${pc.dim('ready in')} ${pc.bold(time)}`
+      `  ${pc.bold(pc.red('PYRA'))} ${pc.red(`v${version}`)}  ${pc.dim('ready in')} ${pc.bold(time)}`
     );
   } else {
     lines.push(`  PYRA v${version}  ready in ${time}`);
@@ -122,7 +120,7 @@ export function printDevBanner(opts: DevBannerOptions): void {
   lines.push('');
 
   // Arrow string (reused)
-  const a = color ? pc.green(arrow) : arrow;
+  const a = color ? pc.red(arrow) : arrow;
 
   // Local URL
   const localLabel = color ? pc.bold('Local:') : 'Local:';
@@ -182,8 +180,7 @@ export function printDevBanner(opts: DevBannerOptions): void {
   }
 }
 
-// ── Production server banner ────────────────────────────────────────────────
-
+// Production server banner 
 export interface ProdBannerOptions {
   result: ProdServerResult;
   version: string;
