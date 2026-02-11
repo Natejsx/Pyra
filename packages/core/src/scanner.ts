@@ -16,11 +16,20 @@ export interface ScannedMiddleware {
   filePath: string; // Absolute file path.
 }
 
+// An error boundary file discovered during scanning (v1.0).
+export interface ScannedError {
+  dirId: string; // Directory-level ID: '/' for root, '/blog' for blog dir.
+  filePath: string; // Absolute file path.
+}
+
 // The full result of scanning the routes directory.
 export interface ScanResult {
   routes: RouteNode[];
   layouts: ScannedLayout[];
   middlewares: ScannedMiddleware[];
+  errors: ScannedError[];
+  /** Absolute path to 404.tsx at the routes root, if found. */
+  notFoundPage?: string;
 }
 
 // Helper functions
@@ -85,6 +94,16 @@ function isMiddlewareFile(filename: string): boolean {
   return filename === "middleware.ts" || filename === "middleware.js";
 }
 
+/** Check if a filename matches an error boundary pattern (v1.0). */
+function isErrorFile(filename: string, extensions: string[]): boolean {
+  return extensions.some((ext) => filename === `error${ext}`);
+}
+
+/** Check if a filename matches a 404 page pattern (v1.0). */
+function isNotFoundFile(filename: string, extensions: string[]): boolean {
+  return extensions.some((ext) => filename === `404${ext}`);
+}
+
 // Scanner 
 
 /**
@@ -105,27 +124,31 @@ export async function scanRoutes(
   const routes: RouteNode[] = [];
   const layouts: ScannedLayout[] = [];
   const middlewares: ScannedMiddleware[] = [];
+  const errors: ScannedError[] = [];
+  let notFoundPage: string | undefined;
 
   // Phase 1: Walk the directory tree and discover everything
-  await walkDirectory(
+  const walkResult = await walkDirectory(
     routesDir,
     routesDir,
     fileExtensions,
     routes,
     layouts,
     middlewares,
+    errors,
   );
+  notFoundPage = walkResult.notFoundPage;
 
   // Phase 1b: Validate no route ID collisions (from route groups or otherwise)
-  validateNoCollisions(routes, layouts, middlewares);
+  validateNoCollisions(routes, layouts, middlewares, errors);
 
-  // Phase 2: Compute layout and middleware ancestry for each route
-  resolveAncestry(routes, layouts, middlewares);
+  // Phase 2: Compute layout, middleware, and error boundary ancestry for each route
+  resolveAncestry(routes, layouts, middlewares, errors);
 
   // Phase 3: Compute parent-child relationships
   resolveChildren(routes);
 
-  return { routes, layouts, middlewares };
+  return { routes, layouts, middlewares, errors, notFoundPage };
 }
 
 /**
