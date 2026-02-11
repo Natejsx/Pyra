@@ -19,7 +19,7 @@ import {
   getOutDir,
 } from 'pyrajs-shared';
 import pc from 'picocolors';
-import { scanRoutes, type ScanResult, type ScannedLayout, type ScannedMiddleware } from './scanner.js';
+import { scanRoutes, type ScanResult, type ScannedLayout, type ScannedMiddleware, type ScannedError } from './scanner.js';
 import { createRouter } from './router.js';
 import {
   createBuildTimeRequestContext,
@@ -138,6 +138,19 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     clientLayoutMap.set(layout.id, layout.filePath);
   }
 
+  // v1.0: Add error boundary files to client build
+  const clientErrorMap = new Map<string, string>(); // dirId → client entry file path
+  for (const err of scanResult.errors) {
+    const safeName = 'error__' + routeIdToSafeName(err.dirId);
+    clientEntryPoints[safeName] = err.filePath;
+    clientErrorMap.set(err.dirId, err.filePath);
+  }
+
+  // v1.0: Add 404 page to client build
+  if (scanResult.notFoundPage) {
+    clientEntryPoints['page__404'] = scanResult.notFoundPage;
+  }
+
   // ── 5. Client build ────────────────────────────────────────────────────
   log.info('Building client bundles...');
 
@@ -195,6 +208,17 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
   for (const layout of scanResult.layouts) {
     const key = 'layout__' + routeIdToSafeName(layout.id);
     serverEntryPoints[key] = layout.filePath;
+  }
+
+  // v1.0: Add error boundary files to server build
+  for (const err of scanResult.errors) {
+    const key = 'error__' + routeIdToSafeName(err.dirId);
+    serverEntryPoints[key] = err.filePath;
+  }
+
+  // v1.0: Add 404 page to server build
+  if (scanResult.notFoundPage) {
+    serverEntryPoints['page__404'] = scanResult.notFoundPage;
   }
 
   // Build the externals list: React subpaths + Node builtins
@@ -321,6 +345,14 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     root,
   );
 
+  // v1.0: Build client output map for error boundaries
+  const clientErrorOutputMap = buildClientLayoutOutputMap(
+    clientResult.metafile!,
+    clientErrorMap,
+    clientOutDir,
+    root,
+  );
+
   // Assemble manifest
   const manifest = assembleManifest(
     adapter,
@@ -337,6 +369,7 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     scanResult,
     serverMwLayoutOutputMap,
     clientLayoutOutputMap,
+    clientErrorOutputMap,
   );
 
   // ── 9. Prerender static routes (SSG) ─────────────────────────────────
@@ -613,7 +646,7 @@ function buildServerOutputMap(
 }
 
 /**
- * Build server output map for middleware and layout files.
+ * Build server output map for middleware, layout, and error boundary files.
  * Returns filePath → relative server output path.
  */
 function buildServerMwLayoutOutputMap(
@@ -622,10 +655,12 @@ function buildServerMwLayoutOutputMap(
   serverOutDir: string,
   root: string,
 ): Map<string, string> {
-  // Collect all middleware + layout source file paths
+  // Collect all middleware + layout + error boundary source file paths
   const knownPaths = new Set<string>();
   for (const mw of scanResult.middlewares) knownPaths.add(mw.filePath);
   for (const layout of scanResult.layouts) knownPaths.add(layout.filePath);
+  for (const err of scanResult.errors) knownPaths.add(err.filePath);
+  if (scanResult.notFoundPage) knownPaths.add(scanResult.notFoundPage);
 
   const result = new Map<string, string>();
 
