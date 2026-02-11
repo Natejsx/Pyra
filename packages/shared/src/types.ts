@@ -274,6 +274,9 @@ export interface RouteNode {
 
   /** Child route IDs (for visualization / enumeration). */
   readonly children: string[];
+
+  /** Route ID of the nearest ancestor error boundary (error.tsx), if any. */
+  readonly errorBoundaryId?: string;
 }
 
 /**
@@ -350,6 +353,8 @@ export interface RenderContext {
   pushHead(tag: string): void;
   /** Layout components to wrap the page, outermost first (v0.8+). */
   layouts?: unknown[];
+  /** Error page props when rendering an error boundary (v1.0+). */
+  error?: ErrorPageProps;
 }
 
 /**
@@ -625,6 +630,12 @@ export interface ManifestRouteEntry {
 
   /** Paths to server-side middleware modules (relative to dist/server/, outermost first). */
   middleware?: string[];
+
+  /** Path to the server-side error boundary module (relative to dist/server/). */
+  errorBoundaryEntry?: string;
+
+  /** Path to the client-side error boundary module (relative to dist/client/). */
+  errorBoundaryClientEntry?: string;
 }
 
 export interface ManifestAsset {
