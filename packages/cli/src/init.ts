@@ -1,49 +1,41 @@
-/**
- * Project Initialization Utility
- *
- * Scaffolds a new Pyra project with automatic package manager detection
- */
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { log } from "pyrajs-shared";
+import { detectPM, spawnPM, type PMName } from "./pm.js";
+import cli_pkg from "../package.json";
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { log } from 'pyrajs-shared';
-import { detectPM, spawnPM, type PMName } from './pm.js';
+// Project Initialization Utility - Scaffolds a new Pyra project with automatic package manager detection
+
+const pkg_version = cli_pkg.version;
 
 export type InitOptions = {
-  /** Project name (directory name) */
-  projectName: string;
-  /** Override package manager detection */
-  pm?: PMName;
-  /** Skip install step */
-  skipInstall?: boolean;
-  /** Project template (optional, for future expansion) */
-  template?: string;
+  projectName: string; // Project name (directory name)
+  pm?: PMName; // Override package manager detection
+  skipInstall?: boolean; // Skip install step
+  template?: string; // Project template
 };
 
-/**
- * Generate package.json content
- */
+// Generate package.json content
 function generatePackageJson(projectName: string): string {
   const pkg = {
     name: projectName,
-    version: '0.1.0',
-    type: 'module',
+    version: "0.1.0",
+    type: "module",
+    descirption: "A super cool project built with Pyra",
     private: true,
     scripts: {
-      dev: 'pyra dev',
-      build: 'pyra build',
+      dev: "pyra dev",
+      build: "pyra build",
     },
     devDependencies: {
-      'pyrajs-cli': '^0.0.3',
+      "pyrajs-cli": `^${pkg_version}`,
     },
   };
 
-  return JSON.stringify(pkg, null, 2) + '\n';
+  return JSON.stringify(pkg, null, 2) + "\n";
 }
 
-/**
- * Generate index.html content
- */
+// Generate index.html content
 function generateIndexHtml(projectName: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -60,9 +52,7 @@ function generateIndexHtml(projectName: string): string {
 `;
 }
 
-/**
- * Generate src/index.ts content
- */
+// Generate src/index.ts content
 function generateIndexTs(): string {
   return `// Welcome to your Pyra project!
 // Start the dev server with: npm run dev
@@ -86,9 +76,7 @@ if (import.meta.hot) {
 `;
 }
 
-/**
- * Generate pyra.config.js content
- */
+// Generate pyra.config.js content
 function generatePyraConfig(): string {
   return `import { defineConfig } from 'pyrajs-cli';
 
@@ -111,9 +99,7 @@ export default defineConfig({
 `;
 }
 
-/**
- * Generate .gitignore content
- */
+// Generate .gitignore content
 function generateGitignore(): string {
   return `# Dependencies
 node_modules/
@@ -162,76 +148,76 @@ export async function initProject(options: InitOptions): Promise<void> {
   // Check if directory already exists
   if (existsSync(projectDir)) {
     log.error(`Directory "${projectName}" already exists`);
-    throw new Error('Project directory already exists');
+    throw new Error("Project directory already exists");
   }
 
   log.info(`Creating new Pyra project: ${projectName}`);
-  log.info('');
+  log.info("");
 
   // 1. Create project directory
   mkdirSync(projectDir, { recursive: true });
   log.success(`✓ Created directory: ${projectName}/`);
 
   // 2. Create src directory
-  const srcDir = join(projectDir, 'src');
+  const srcDir = join(projectDir, "src");
   mkdirSync(srcDir, { recursive: true });
   log.success(`✓ Created directory: ${projectName}/src/`);
 
   // 3. Write package.json
-  const packageJsonPath = join(projectDir, 'package.json');
-  writeFileSync(packageJsonPath, generatePackageJson(projectName), 'utf-8');
+  const packageJsonPath = join(projectDir, "package.json");
+  writeFileSync(packageJsonPath, generatePackageJson(projectName), "utf-8");
   log.success(`✓ Created package.json`);
 
   // 4. Write index.html
-  const indexHtmlPath = join(projectDir, 'index.html');
-  writeFileSync(indexHtmlPath, generateIndexHtml(projectName), 'utf-8');
+  const indexHtmlPath = join(projectDir, "index.html");
+  writeFileSync(indexHtmlPath, generateIndexHtml(projectName), "utf-8");
   log.success(`✓ Created index.html`);
 
   // 5. Write src/index.ts
-  const indexTsPath = join(srcDir, 'index.ts');
-  writeFileSync(indexTsPath, generateIndexTs(), 'utf-8');
+  const indexTsPath = join(srcDir, "index.ts");
+  writeFileSync(indexTsPath, generateIndexTs(), "utf-8");
   log.success(`✓ Created src/index.ts`);
 
   // 6. Write pyra.config.js
-  const configPath = join(projectDir, 'pyra.config.js');
-  writeFileSync(configPath, generatePyraConfig(), 'utf-8');
+  const configPath = join(projectDir, "pyra.config.js");
+  writeFileSync(configPath, generatePyraConfig(), "utf-8");
   log.success(`✓ Created pyra.config.js`);
 
   // 7. Write .gitignore
-  const gitignorePath = join(projectDir, '.gitignore');
-  writeFileSync(gitignorePath, generateGitignore(), 'utf-8');
+  const gitignorePath = join(projectDir, ".gitignore");
+  writeFileSync(gitignorePath, generateGitignore(), "utf-8");
   log.success(`✓ Created .gitignore`);
 
-  log.info('');
-  log.success('Project scaffolded successfully!');
-  log.info('');
+  log.info("");
+  log.success("Project scaffolded successfully!");
+  log.info("");
 
   // 8. Detect package manager and install dependencies
   if (!skipInstall) {
-    log.info('Installing dependencies...');
-    log.info('');
+    log.info("Installing dependencies...");
+    log.info("");
 
     try {
       const pm = await detectPM(projectDir, pmOverride);
 
       // Run install command
-      await spawnPM(pm, ['install'], { cwd: projectDir });
+      await spawnPM(pm, ["install"], { cwd: projectDir });
 
-      log.info('');
-      log.success('✓ Dependencies installed');
+      log.info("");
+      log.success("✓ Dependencies installed");
     } catch (error) {
-      log.warn('Failed to install dependencies');
-      log.warn('Run the install command manually:');
-      log.warn('');
+      log.warn("Failed to install dependencies");
+      log.warn("Run the install command manually:");
+      log.warn("");
       log.warn(`  cd ${projectName}`);
       log.warn(`  npm install`);
     }
   }
 
   // 9. Show next steps
-  log.info('');
-  log.info('🎉 All done! Next steps:');
-  log.info('');
+  log.info("");
+  log.info("🎉 All done! Next steps:");
+  log.info("");
   log.info(`  cd ${projectName}`);
 
   if (skipInstall) {
@@ -239,8 +225,8 @@ export async function initProject(options: InitOptions): Promise<void> {
   }
 
   log.info(`  npm run dev`);
-  log.info('');
-  log.info('Happy coding! 🔥');
+  log.info("");
+  log.info("Happy coding! 🔥");
 }
 
 /**
@@ -251,19 +237,19 @@ export async function initProject(options: InitOptions): Promise<void> {
  */
 export function validateProjectName(name: string): true | string {
   if (!name || name.trim().length === 0) {
-    return 'Project name is required';
+    return "Project name is required";
   }
 
   if (!/^[a-z0-9-_]+$/i.test(name)) {
-    return 'Project name can only contain letters, numbers, hyphens, and underscores';
+    return "Project name can only contain letters, numbers, hyphens, and underscores";
   }
 
-  if (name.startsWith('.') || name.startsWith('-') || name.startsWith('_')) {
-    return 'Project name cannot start with a dot, hyphen, or underscore';
+  if (name.startsWith(".") || name.startsWith("-") || name.startsWith("_")) {
+    return "Project name cannot start with a dot, hyphen, or underscore";
   }
 
   if (name.length > 214) {
-    return 'Project name is too long (max 214 characters)';
+    return "Project name is too long (max 214 characters)";
   }
 
   return true;

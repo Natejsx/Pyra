@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { log } from 'pyrajs-shared';
 import { addTailwind, type TailwindPreset } from './utils/tailwind.js';
 import { detectPM, type PM } from './pm.js';
+import { getVersion } from './utils/reporter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,7 +58,9 @@ function copyDir(src: string, dest: string): void {
  * Replace placeholders in file content
  */
 function replacePlaceholders(content: string, projectName: string): string {
-  return content.replace(/\{\{PROJECT_NAME\}\}/g, projectName);
+  return content
+    .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
+    .replace(/\{\{PYRA_VERSION\}\}/g, getVersion());
 }
 
 /**
