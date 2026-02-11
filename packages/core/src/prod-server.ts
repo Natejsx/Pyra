@@ -177,6 +177,10 @@ export class ProdServer {
   private containerId: string;
   private config: PyraConfig | undefined;
   private moduleCache: Map<string, Promise<any>> = new Map();
+  // v1.0: Graceful shutdown
+  private inflightCount = 0;
+  private isShuttingDown = false;
+  private shutdownResolve: (() => void) | null = null;
 
   constructor(options: ProdServerOptions) {
     this.distDir = options.distDir;
@@ -262,17 +266,50 @@ export class ProdServer {
   }
 
   async stop(): Promise<void> {
-    return new Promise((resolve) => {
-      this.server.close(() => {
-        log.info("Production server stopped");
-        resolve();
-      });
-    });
+    this.isShuttingDown = true;
+
+    // Stop accepting new connections
+    this.server.close();
+
+    // Wait for in-flight requests to complete (with timeout)
+    if (this.inflightCount > 0) {
+      log.info(`Waiting for ${this.inflightCount} in-flight request(s) to complete...`);
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          this.shutdownResolve = resolve;
+        }),
+        new Promise<void>((resolve) => setTimeout(resolve, 10000)), // 10s timeout
+      ]);
+    }
+
+    log.info("Production server stopped");
   }
 
   // ── Request handling ─────────────────────────────────────────────────────
 
   private async handleRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
+    // v1.0: Reject new requests during shutdown
+    if (this.isShuttingDown) {
+      res.writeHead(503, { "Content-Type": "text/plain", "Connection": "close" });
+      res.end("Service Unavailable - Shutting Down");
+      return;
+    }
+    this.inflightCount++;
+
+    try {
+      await this.handleRequestInner(req, res);
+    } finally {
+      this.inflightCount--;
+      if (this.isShuttingDown && this.inflightCount === 0 && this.shutdownResolve) {
+        this.shutdownResolve();
+      }
+    }
+  }
+
+  private async handleRequestInner(
     req: http.IncomingMessage,
     res: http.ServerResponse,
   ): Promise<void> {
@@ -541,17 +578,23 @@ export class ProdServer {
       );
     }
 
-    // Call load() if present
+    // Call load() if present (v1.0: errors propagate to renderErrorPage)
     let data: unknown = null;
     if (entry.hasLoad && typeof mod.load === "function") {
       tracer?.start("load");
-      const loadResult = await mod.load(ctx);
-      if (loadResult instanceof Response) {
+      try {
+        const loadResult = await mod.load(ctx);
+        if (loadResult instanceof Response) {
+          tracer?.end();
+          return loadResult;
+        }
+        data = loadResult;
         tracer?.end();
-        return loadResult;
+      } catch (loadError) {
+        const msg = loadError instanceof Error ? loadError.message : String(loadError);
+        tracer?.endWithError(msg);
+        throw loadError; // Re-throw so outer catch renders error boundary
       }
-      data = loadResult;
-      tracer?.end();
     }
 
     // Load layout components
