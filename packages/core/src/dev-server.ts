@@ -657,14 +657,128 @@ export class DevServer {
     );
     this.router = createRouter(scanResult);
 
-    // Log the route table
+    // v0.9: Print detailed route table at startup
+    this.printRouteTable(scanResult);
+  }
+
+  /**
+   * v0.9: Print the dev startup route table.
+   */
+  private printRouteTable(scanResult: import("./scanner.js").ScanResult): void {
+    if (!this.router) return;
+
     const pages = this.router.pageRoutes();
     const apis = this.router.apiRoutes();
-    log.info(`Discovered ${pages.length} page routes, ${apis.length} API routes:`);
-    for (const route of [...pages, ...apis]) {
-      const type = route.type === "page" ? "page" : "api ";
-      log.info(`  ${type}  ${route.pattern}`);
+    const totalRoutes = pages.length + apis.length;
+
+    console.log('');
+    console.log(`  ${pc.bold('Routes')} ${pc.dim(`(${totalRoutes} routes, ${pages.length} pages, ${apis.length} APIs)`)}`);
+    console.log('');
+
+    // Page Routes
+    if (pages.length > 0) {
+      console.log(`  ${pc.bold('Page Routes')}`);
+      console.log(`  ${pc.dim('\u2500'.repeat(64))}`);
+
+      for (const route of pages) {
+        const pattern = route.pattern.padEnd(24);
+        const file = pc.dim(path.basename(route.filePath));
+
+        // Collect annotations
+        const annotations: string[] = [];
+
+        // Layout info
+        if (route.layoutId) {
+          const layoutName = route.layoutId === '/' ? 'root' : route.layoutId.slice(1);
+          annotations.push(`${pc.dim('layout:')} ${pc.cyan(layoutName)}`);
+        }
+
+        // Middleware info
+        if (route.middlewarePaths.length > 0) {
+          const mwNames = route.middlewarePaths.map(p => {
+            const dir = path.dirname(path.relative(this.routesDir!, p));
+            return dir === '.' ? 'root' : dir;
+          });
+          annotations.push(`${pc.dim('mw:')} ${pc.yellow(mwNames.join(', '))}`);
+        }
+
+        const annotStr = annotations.length > 0 ? `  ${annotations.join('  ')}` : '';
+        console.log(`  ${pc.green(pattern)}  ${file}${annotStr}`);
+      }
+      console.log('');
     }
+
+    // API Routes
+    if (apis.length > 0) {
+      console.log(`  ${pc.bold('API Routes')}`);
+      console.log(`  ${pc.dim('\u2500'.repeat(64))}`);
+
+      for (const route of apis) {
+        const pattern = route.pattern.padEnd(24);
+        const file = pc.dim(path.basename(route.filePath));
+
+        // Detect exported HTTP methods via regex scan
+        const methods = this.detectApiMethods(route);
+        const methodStr = methods.length > 0 ? `  ${pc.cyan(methods.join(' '))}` : '';
+
+        console.log(`  ${pc.green(pattern)}  ${file}${methodStr}`);
+      }
+      console.log('');
+    }
+
+    // Middleware summary
+    if (scanResult.middlewares.length > 0) {
+      console.log(`  ${pc.bold('Middleware')}`);
+      console.log(`  ${pc.dim('\u2500'.repeat(64))}`);
+      for (const mw of scanResult.middlewares) {
+        const relPath = path.relative(this.routesDir!, mw.filePath);
+        const scope = mw.dirId === '/' ? 'all routes (root)' : `${mw.dirId}/**`;
+        console.log(`  ${pc.dim(relPath.split(path.sep).join('/'))}  ${pc.dim('\u2192')} ${scope}`);
+      }
+      console.log('');
+    }
+
+    // Layout summary
+    if (scanResult.layouts.length > 0) {
+      console.log(`  ${pc.bold('Layouts')}`);
+      console.log(`  ${pc.dim('\u2500'.repeat(64))}`);
+      for (const layout of scanResult.layouts) {
+        const relPath = path.relative(this.routesDir!, layout.filePath);
+        const scope = layout.id === '/' ? 'all pages (root)' : this.getLayoutScope(layout.id, pages);
+        console.log(`  ${pc.dim(relPath.split(path.sep).join('/'))}  ${pc.dim('\u2192')} ${scope}`);
+      }
+      console.log('');
+    }
+  }
+
+  /**
+   * Detect exported HTTP methods from an API route file via regex scan.
+   * Avoids importing the module at startup.
+   */
+  private detectApiMethods(route: RouteNode): string[] {
+    try {
+      const source = fs.readFileSync(route.filePath, 'utf-8');
+      const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+      return methods.filter((method) => {
+        const pattern = new RegExp(
+          `export\\s+(async\\s+)?function\\s+${method}\\b|export\\s+(const|let)\\s+${method}\\b`
+        );
+        return pattern.test(source);
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get a human-readable scope string for a layout.
+   */
+  private getLayoutScope(layoutId: string, pages: RouteNode[]): string {
+    const matching = pages
+      .filter(p => p.layoutId === layoutId || p.id.startsWith(layoutId + '/') || p.id === layoutId)
+      .map(p => p.pattern);
+    if (matching.length <= 3) return matching.join(', ');
+    return `${matching.slice(0, 2).join(', ')}, +${matching.length - 2} more`;
   }
 
   // ── Error page ──────────────────────────────────────────────────────────────
