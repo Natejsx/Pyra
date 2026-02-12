@@ -24,16 +24,20 @@
     "ssr",
     "framework"
   ],
-  "author": "Nathaniel Paz",
+  "author": {
+    "name": "Nathaniel Paz",
+    "email": "natejsx@gmail.com",
+    "url": "https://natejsx.dev/"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Simpleboi/Pyra.git",
+    "url": "git+https://github.com/Natejsx/Pyra.git",
     "directory": "packages/create-pyra"
   },
-  "homepage": "https://github.com/Simpleboi/Pyra#readme",
+  "homepage": "https://github.com/Natejsx/Pyra#readme",
   "bugs": {
-    "url": "https://github.com/Simpleboi/Pyra/issues"
+    "url": "https://github.com/Natejsx/Pyra/issues"
   },
   "engines": {
     "node": ">=18.0.0"
