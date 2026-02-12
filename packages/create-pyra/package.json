@@ -1,0 +1,44 @@
+{
+  "name": "create-pyra",
+  "version": "0.9.5",
+  "description": "Scaffold a new Pyra.js project",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "create-pyra": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "pyra",
+    "create",
+    "scaffold",
+    "react",
+    "fullstack",
+    "ssr",
+    "framework"
+  ],
+  "author": "Nathaniel Paz",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Simpleboi/Pyra",
+    "directory": "packages/create-pyra"
+  },
+  "homepage": "https://github.com/Simpleboi/Pyra#readme",
+  "bugs": {
+    "url": "https://github.com/Simpleboi/Pyra/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.2.0",
+    "picocolors": "^1.1.1"
+  }
+}
