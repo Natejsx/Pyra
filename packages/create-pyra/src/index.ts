@@ -5,7 +5,16 @@ import { input } from "@inquirer/prompts";
 import pc from "picocolors";
 import { createRequire } from "node:module";
 
-// ── Logger ───────────────────────────────────────────────────────────
+const logo = `
+██████╗ ██╗   ██╗██████╗  █████╗
+██╔══██╗╚██╗ ██╔╝██╔══██╗██╔══██╗
+██████╔╝ ╚████╔╝ ██████╔╝███████║
+██╔═══╝   ╚██╔╝  ██╔══██╗██╔══██║
+██║        ██║   ██║  ██║██║  ██║
+╚═╝        ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
+`;
+
+// Logger
 const log = {
   info: (msg: string) => console.log(`${pc.cyan("[pyra]")} ${msg}`),
   success: (msg: string) => console.log(`${pc.green("[pyra]")} ${msg}`),
@@ -13,12 +22,12 @@ const log = {
   error: (msg: string) => console.error(`${pc.red("[pyra]")} ${msg}`),
 };
 
-// ── Version ──────────────────────────────────────────────────────────
+// ── Version 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
 const VERSION: string = pkg.version;
 
-// ── Arg parsing ──────────────────────────────────────────────────────
+// ── Arg parsing 
 type PMName = "npm" | "pnpm" | "yarn" | "bun";
 
 interface CliArgs {
@@ -82,7 +91,7 @@ function printHelp(): void {
 `);
 }
 
-// ── PM detection ─────────────────────────────────────────────────────
+// ── PM detection
 // Simplified version of packages/cli/src/pm.ts — detects the package
 // manager the user is running `create-pyra` with.
 
@@ -152,7 +161,7 @@ function spawnPM(pm: PMName, args: string[], cwd: string): Promise<void> {
   });
 }
 
-// ── Validation ───────────────────────────────────────────────────────
+// ── Validation 
 
 function validateProjectName(name: string): true | string {
   if (!name || name.trim().length === 0) return "Project name is required";
@@ -164,9 +173,8 @@ function validateProjectName(name: string): true | string {
   return true;
 }
 
-// ── File generators ──────────────────────────────────────────────────
+// ── File generators 
 // These produce the same files as `pyra create` in packages/cli/src/init.ts
-
 function generatePackageJson(projectName: string): string {
   const content = {
     name: projectName,
@@ -313,10 +321,13 @@ pnpm-debug.log*
 `;
 }
 
-// ── Main ─────────────────────────────────────────────────────────────
-
+// ── Main
 async function main(): Promise<void> {
-  const { projectName: nameArg, pm: pmOverride, skipInstall } = parseArgs(process.argv);
+  const {
+    projectName: nameArg,
+    pm: pmOverride,
+    skipInstall,
+  } = parseArgs(process.argv);
 
   // Banner
   console.log();
@@ -358,7 +369,10 @@ async function main(): Promise<void> {
   mkdirSync(apiHealthDir, { recursive: true });
 
   // Write all project files
-  writeFileSync(join(projectDir, "package.json"), generatePackageJson(projectName));
+  writeFileSync(
+    join(projectDir, "package.json"),
+    generatePackageJson(projectName),
+  );
   log.success("package.json");
 
   writeFileSync(join(projectDir, "pyra.config.ts"), generatePyraConfig());
@@ -396,7 +410,9 @@ async function main(): Promise<void> {
       log.success("Dependencies installed");
     } catch {
       log.warn("Failed to install dependencies automatically");
-      log.warn(`Run ${pc.bold("npm install")} manually in the project directory`);
+      log.warn(
+        `Run ${pc.bold("npm install")} manually in the project directory`,
+      );
     }
   }
 
