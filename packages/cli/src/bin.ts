@@ -38,7 +38,7 @@ import pkg from "../../../package.json";
 const program = new Command();
 const version = pkg.version;
 
-const logo = `
+const LOGO = `
 ██████╗ ██╗   ██╗██████╗  █████╗
 ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔══██╗
 ██████╔╝ ╚████╔╝ ██████╔╝███████║
@@ -51,7 +51,7 @@ const logo = `
 program
   .name("pyra")
   .description(
-    chalk.red(`${logo}`) +
+    chalk.red(`${LOGO}`) +
       chalk.dim(`
 Ignite your web stack.
 Next-gen full-stack framework.
@@ -59,7 +59,7 @@ Next-gen full-stack framework.
   )
   .version(`${version}`)
   .action(() => {
-    console.log(chalk.red(logo))
+    console.log(chalk.red(LOGO))
     console.log(chalk.bold(`Pyra v${version}`));
     console.log("Ignite your web stack.")
     console.log("Next-gen full-stack framework.")

@@ -5,7 +5,7 @@ import { input } from "@inquirer/prompts";
 import pc from "picocolors";
 import { createRequire } from "node:module";
 
-const logo = `
+const LOGO = `
 ██████╗ ██╗   ██╗██████╗  █████╗
 ██╔══██╗╚██╗ ██╔╝██╔══██╗██╔══██╗
 ██████╔╝ ╚████╔╝ ██████╔╝███████║
@@ -321,7 +321,7 @@ pnpm-debug.log*
 `;
 }
 
-// ── Main
+// Main
 async function main(): Promise<void> {
   const {
     projectName: nameArg,
@@ -331,8 +331,9 @@ async function main(): Promise<void> {
 
   // Banner
   console.log();
+  console.log(`${pc.red(LOGO)}`);
   console.log(
-    `  ${pc.bold(pc.red("Pyra"))} ${pc.dim(`v${VERSION}`)} ${pc.dim("— create a new project")}`,
+    `  ${pc.bold(pc.red("Pyra"))} ${pc.dim(`v${VERSION}`)} ${pc.dim("- create a new project")}`,
   );
   console.log();
 
