@@ -20,7 +20,7 @@ If you omit the project name, you'll be prompted for one interactively.
 
 ## What You Get
 
-A ready-to-run full-stack project with React SSR and file-based routing:
+A ready-to-run full-stack project with SSR, file-based routing, and an HMR dev server. Pyra is framework-agnostic by design, it uses a pluggable adapter interface to support any UI layer. The scaffolded project currently ships with React as the default adapter, with support for other frameworks (Svelte, Vue, Solid, etc.) coming soon.
 
 ```
 my-app/
