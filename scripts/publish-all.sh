@@ -10,7 +10,7 @@ echo ""
 
 # 1. pyrajs-shared (no internal deps)
 echo "📦 Publishing pyrajs-shared..."
-cd packages/shared
+cd ../packages/shared
 npm publish
 echo "✅ pyrajs-shared published"
 echo ""
