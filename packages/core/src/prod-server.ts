@@ -400,7 +400,15 @@ export class ProdServer {
               );
             }
           }
-          if (match.entry.prerendered) {
+          // Branch on render mode
+          const renderMode = match.entry.renderMode ?? "ssr";
+          if (renderMode === "spa") {
+            tracer?.start("serve-spa");
+            const spaResponse = this.serveSpaFallback();
+            tracer?.end();
+            return spaResponse;
+          }
+          if (renderMode === "ssg" && match.entry.prerendered) {
             tracer?.start("serve-prerendered");
             const preResponse = this.servePrerenderedPageInner(cleanUrl, match);
             tracer?.end();
@@ -498,6 +506,35 @@ export class ProdServer {
       headers: {
         "Content-Type": "text/html",
         "Cache-Control": cacheControl,
+      },
+    });
+  }
+
+  // ── SPA Fallback ─────────────────────────────────────────────────────────
+
+  private serveSpaFallback(): Response {
+    const fallbackPath = this.manifest.spaFallback;
+    if (!fallbackPath) {
+      return new Response("SPA fallback HTML not found in build output.", {
+        status: 500,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    const htmlAbsPath = path.join(this.clientDir, fallbackPath);
+    if (!fs.existsSync(htmlAbsPath)) {
+      return new Response("SPA fallback file missing.", {
+        status: 500,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    const html = fs.readFileSync(htmlAbsPath, "utf-8");
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html",
+        "Cache-Control": "no-cache",
       },
     });
   }
