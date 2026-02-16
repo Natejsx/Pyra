@@ -4,6 +4,14 @@
 export type PyraMode = 'development' | 'production';
 
 /**
+ * Rendering mode for routes.
+ * - 'ssr': Server-side rendered on each request (default).
+ * - 'spa': Client-side only — serves an HTML shell, no server rendering.
+ * - 'ssg': Static site generation — prerendered to HTML at build time.
+ */
+export type RenderMode = 'ssr' | 'spa' | 'ssg';
+
+/**
  * Dev server configuration
  */
 export type DevServerConfig = {
@@ -174,6 +182,12 @@ export type PyraConfig = {
 
   /** DOM element ID where the app mounts on the client. Default: 'app' */
   appContainerId?: string;
+
+  /**
+   * Global rendering mode for all routes (default: 'ssr').
+   * Individual routes can override via `export const render = "spa" | "ssr" | "ssg"`.
+   */
+  renderMode?: RenderMode;
 
   /** Transparency / tracing configuration (v0.9). */
   trace?: {
@@ -539,7 +553,13 @@ export interface PageRouteModule {
   /** Server-side data loader. Runs on every request (SSR) or at build time (SSG). */
   load?: (context: RequestContext) => Promise<unknown> | unknown;
 
-  /** Prerender configuration for SSG (v0.7+). */
+  /**
+   * Per-route rendering mode override.
+   * Takes precedence over the global `renderMode` in pyra.config.
+   */
+  render?: RenderMode;
+
+  /** Prerender configuration for SSG (v0.7+). Also used when render = "ssg". */
   prerender?: boolean | PrerenderConfig;
 
   /** HTTP cache-control hints for this route (v0.7+). */
@@ -587,11 +607,17 @@ export interface RouteManifest {
   /** Build timestamp (ISO 8601). */
   builtAt: string;
 
+  /** Global rendering mode used during the build. */
+  renderMode: RenderMode;
+
   /** Map of route ID → route entry. */
   routes: Record<string, ManifestRouteEntry>;
 
   /** Map of asset filename → asset metadata. */
   assets: Record<string, ManifestAsset>;
+
+  /** Path to the SPA fallback HTML (relative to dist/client/), if any SPA routes exist. */
+  spaFallback?: string;
 }
 
 export interface ManifestRouteEntry {
@@ -603,6 +629,9 @@ export interface ManifestRouteEntry {
 
   /** 'page' or 'api'. */
   type: 'page' | 'api';
+
+  /** Resolved rendering mode for this route. */
+  renderMode?: RenderMode;
 
   // --- Page route fields (present when type === 'page') ---
 
