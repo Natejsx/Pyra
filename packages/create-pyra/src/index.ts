@@ -14,7 +14,7 @@ const LOGO = `
 ╚═╝        ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
 `;
 
-// ── Logger ───────────────────────────────────────────────────────────
+// Logger
 const log = {
   info: (msg: string) => console.log(`${pc.cyan("[pyra]")} ${msg}`),
   success: (msg: string) => console.log(`${pc.green("[pyra]")} ${msg}`),
@@ -22,12 +22,12 @@ const log = {
   error: (msg: string) => console.error(`${pc.red("[pyra]")} ${msg}`),
 };
 
-// ── Version ──────────────────────────────────────────────────────────
+// Version
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
 const VERSION: string = pkg.version;
 
-// ── Types ────────────────────────────────────────────────────────────
+// Types
 type PMName = "npm" | "pnpm" | "yarn" | "bun";
 type Framework = "vanilla" | "react";
 type Language = "typescript" | "javascript";
@@ -39,8 +39,7 @@ interface CliArgs {
   skipInstall: boolean;
 }
 
-// ── Arg parsing ──────────────────────────────────────────────────────
-
+// Arg parsing
 function parseArgs(argv: string[]): CliArgs {
   const args = argv.slice(2);
   let projectName: string | undefined;
@@ -96,8 +95,7 @@ function printHelp(): void {
 `);
 }
 
-// ── PM detection ─────────────────────────────────────────────────────
-
+// PM detection
 const LOCKFILES: Record<PMName, string> = {
   pnpm: "pnpm-lock.yaml",
   yarn: "yarn.lock",
@@ -159,8 +157,7 @@ function spawnPM(pm: PMName, args: string[], cwd: string): Promise<void> {
   });
 }
 
-// ── Validation ───────────────────────────────────────────────────────
-
+// Validation
 function validateProjectName(name: string): true | string {
   if (!name || name.trim().length === 0) return "Project name is required";
   if (!/^[a-z0-9-_]+$/i.test(name))

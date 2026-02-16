@@ -16,10 +16,11 @@ export interface ScaffoldOptions {
   projectName: string;
   template: Template;
   language: Language;
-  targetDir?: string;
+  targetDir: string;
   tailwind?: boolean;
   tailwindPreset?: TailwindPreset;
   skipInstall?: boolean;
+  force?: boolean;
 }
 
 /**
@@ -145,17 +146,24 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
     tailwind = false,
     tailwindPreset = 'basic',
     skipInstall = false,
+    force = false,
   } = options;
 
-  // Determine target directory
-  const projectDir = targetDir || path.join(process.cwd(), projectName);
+  const projectDir = targetDir;
 
-  // Check if directory already exists
+  // Check if directory exists and is non-empty
   if (fs.existsSync(projectDir)) {
     const files = fs.readdirSync(projectDir);
-    if (files.length > 0) {
-      throw new Error(`Directory ${projectName} already exists and is not empty`);
+    const significant = files.filter(
+      f => f !== '.git' && f !== '.DS_Store' && f !== 'Thumbs.db'
+    );
+    if (significant.length > 0 && !force) {
+      throw new Error(
+        'Directory is not empty. Use --force to scaffold anyway.'
+      );
     }
+  } else {
+    fs.mkdirSync(projectDir, { recursive: true });
   }
 
   // Get template directory
