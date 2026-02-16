@@ -179,8 +179,7 @@ function validateProjectName(name: string): true | string {
   return true;
 }
 
-// ── Template copying ─────────────────────────────────────────────────
-
+// Template copying
 function copyTemplate(
   framework: Framework,
   language: Language,
@@ -224,8 +223,7 @@ function copyDir(
   }
 }
 
-// ── Tailwind generators ──────────────────────────────────────────────
-
+// Tailwind generators
 function generateTailwindConfig(framework: Framework): string {
   const contentPaths =
     framework === "react"

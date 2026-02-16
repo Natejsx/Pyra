@@ -13,7 +13,9 @@
     "template-react-ts",
     "template-react-js",
     "template-vanilla-ts",
-    "template-vanilla-js"
+    "template-vanilla-js",
+    "template-preact-ts",
+    "template-preact-js"
   ],
   "scripts": {
     "build": "tsup",
