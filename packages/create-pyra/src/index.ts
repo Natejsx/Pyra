@@ -40,7 +40,7 @@ const VERSION: string = pkg.version;
 
 // Types
 type PMName = "npm" | "pnpm" | "yarn" | "bun";
-type Framework = "vanilla" | "react";
+type Framework = "vanilla" | "react" | "preact";
 type Language = "typescript" | "javascript";
 type TailwindPreset = "none" | "basic" | "shadcn";
 
@@ -226,9 +226,9 @@ function copyDir(
 // Tailwind generators
 function generateTailwindConfig(framework: Framework): string {
   const contentPaths =
-    framework === "react"
-      ? ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"]
-      : ["./index.html", "./src/**/*.{js,ts}"];
+    framework === "vanilla"
+      ? ["./index.html", "./src/**/*.{js,ts}"]
+      : ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"];
 
   return `/** @type {import('tailwindcss').Config} */
 export default {
@@ -243,9 +243,9 @@ export default {
 
 function generateShadcnTailwindConfig(framework: Framework): string {
   const contentPaths =
-    framework === "react"
-      ? ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"]
-      : ["./index.html", "./src/**/*.{js,ts}"];
+    framework === "vanilla"
+      ? ["./index.html", "./src/**/*.{js,ts}"]
+      : ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"];
 
   return `/** @type {import('tailwindcss').Config} */
 export default {
@@ -503,6 +503,7 @@ async function main(): Promise<void> {
     choices: [
       { name: `${pc.yellow("Vanilla")}`, value: "vanilla" as Framework },
       { name: `${pc.cyan("React")}`, value: "react" as Framework },
+      { name: `${pc.magenta("Preact")}`, value: "preact" as Framework },
     ],
   });
 
