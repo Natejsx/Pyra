@@ -13,11 +13,13 @@ import {
   type ManifestAsset,
   type RouteGraph,
   type RenderContext,
+  type RenderMode,
   type CacheConfig,
   type PrerenderConfig,
   HTTP_METHODS,
   getOutDir,
 } from 'pyrajs-shared';
+import { resolveRouteRenderMode } from './render-mode.js';
 import pc from 'picocolors';
 import { scanRoutes, type ScanResult, type ScannedLayout, type ScannedMiddleware, type ScannedError } from './scanner.js';
 import { createRouter } from './router.js';
@@ -88,7 +90,7 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
 
   if (pageRoutes.length === 0 && apiRoutes.length === 0) {
     log.warn('No routes found. Nothing to build.');
-    const manifest = buildEmptyManifest(adapter.name, base);
+    const manifest = buildEmptyManifest(adapter.name, base, options.config.renderMode);
     fs.writeFileSync(
       path.join(outDir, 'manifest.json'),
       JSON.stringify(manifest, null, 2),
@@ -258,11 +260,13 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     },
   });
 
-  // Detect exports (hasLoad, prerender, cache, API methods) 
+  // Detect exports (hasLoad, prerender, cache, render mode, API methods)
+  const globalMode: RenderMode = options.config.renderMode ?? 'ssr';
   const hasLoadMap = new Map<string, boolean>();
   const apiMethodsMap = new Map<string, string[]>();
   const prerenderMap = new Map<string, true | PrerenderConfig>();
   const cacheMap = new Map<string, CacheConfig>();
+  const renderModeMap = new Map<string, RenderMode>();
 
   // Build a map from routeId → server output path for import()
   const serverOutputPathMap = new Map<string, string>();
@@ -282,13 +286,18 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
       // Track server output path for later import
       serverOutputPathMap.set(routeInfo.routeId, path.resolve(root, outputPath));
 
-      // If prerender or cache is exported, we need to import to get the value
-      if (exports.includes('prerender') || exports.includes('cache')) {
+      // Import module if it exports render, prerender, or cache
+      if (exports.includes('render') || exports.includes('prerender') || exports.includes('cache')) {
         const modUrl = pathToFileURL(path.resolve(root, outputPath)).href;
         const mod = await import(modUrl);
 
-        if (mod.prerender) {
-          if (mod.prerender === true) {
+        // Resolve render mode (render export > prerender > global default)
+        const mode = resolveRouteRenderMode(mod, globalMode);
+        renderModeMap.set(routeInfo.routeId, mode);
+
+        // Only populate prerenderMap for SSG routes
+        if (mode === 'ssg') {
+          if (mod.prerender === true || (!mod.prerender && mod.render === 'ssg')) {
             prerenderMap.set(routeInfo.routeId, true);
           } else if (typeof mod.prerender === 'object' && typeof mod.prerender.paths === 'function') {
             prerenderMap.set(routeInfo.routeId, mod.prerender);
@@ -298,6 +307,9 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
         if (mod.cache && typeof mod.cache === 'object') {
           cacheMap.set(routeInfo.routeId, mod.cache);
         }
+      } else {
+        // No render/prerender/cache exports — use global default
+        renderModeMap.set(routeInfo.routeId, globalMode);
       }
     } else {
       const methods = exports.filter(e =>
@@ -356,6 +368,7 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
   const manifest = assembleManifest(
     adapter,
     base,
+    globalMode,
     router,
     clientOutputMap,
     serverOutputMap,
@@ -363,6 +376,7 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     apiMethodsMap,
     prerenderMap,
     cacheMap,
+    renderModeMap,
     clientResult.metafile!,
     clientOutDir,
     scanResult,
@@ -370,6 +384,20 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     clientLayoutOutputMap,
     clientErrorOutputMap,
   );
+
+  // ── 8.5. Generate SPA fallback if any SPA routes exist ────────────────
+  const hasSpaRoutes = [...renderModeMap.values()].some(m => m === 'spa');
+  if (hasSpaRoutes) {
+    const shell = adapter.getDocumentShell?.() || DEFAULT_SHELL;
+    const clientDir = path.join(outDir, 'client');
+    let spaHtml = shell
+      .replace('__CONTAINER_ID__', containerId)
+      .replace('<!--pyra-outlet-->', '')
+      .replace('<!--pyra-head-->', '');
+    fs.writeFileSync(path.join(clientDir, '__spa.html'), spaHtml, 'utf-8');
+    manifest.spaFallback = '__spa.html';
+    log.info('Generated SPA fallback: dist/client/__spa.html');
+  }
 
   // ── 9. Prerender static routes (SSG) ─────────────────────────────────
   if (prerenderMap.size > 0) {
@@ -726,6 +754,7 @@ function buildClientLayoutOutputMap(
 function assembleManifest(
   adapter: PyraAdapter,
   base: string,
+  globalMode: RenderMode,
   router: RouteGraph,
   clientOutputMap: Map<string, { entry: string; chunks: string[]; css: string[] }>,
   serverOutputMap: Map<string, string>,
@@ -733,6 +762,7 @@ function assembleManifest(
   apiMethodsMap: Map<string, string[]>,
   prerenderMap: Map<string, true | PrerenderConfig>,
   cacheMap: Map<string, CacheConfig>,
+  renderModeMap: Map<string, RenderMode>,
   clientMeta: esbuild.Metafile,
   clientOutDir: string,
   scanResult: ScanResult,
@@ -808,14 +838,17 @@ function assembleManifest(
       ? clientErrorOutputMap.get(route.errorBoundaryId)
       : undefined;
 
+    const routeMode = renderModeMap.get(route.id) ?? globalMode;
+
     routes[route.id] = {
       id: route.id,
       pattern: route.pattern,
       type: 'page',
+      renderMode: routeMode,
       clientEntry: clientOutput?.entry,
       clientChunks: clientOutput?.chunks?.length ? clientOutput.chunks : undefined,
       css: clientOutput?.css?.length ? clientOutput.css : undefined,
-      ssrEntry: serverEntry,
+      ssrEntry: routeMode !== 'spa' ? serverEntry : undefined,
       hasLoad: hasLoadMap.get(route.id) || false,
       cache: routeCache,
       layouts: layoutChain.length ? layoutChain : undefined,
@@ -892,18 +925,20 @@ function assembleManifest(
     adapter: adapter.name,
     base,
     builtAt: new Date().toISOString(),
+    renderMode: globalMode,
     routes,
     assets,
   };
 }
 
 // Build an empty manifest when no routes are found.
-function buildEmptyManifest(adapterName: string, base: string): RouteManifest {
+function buildEmptyManifest(adapterName: string, base: string, renderMode: RenderMode = 'ssr'): RouteManifest {
   return {
     version: 1,
     adapter: adapterName,
     base,
     builtAt: new Date().toISOString(),
+    renderMode,
     routes: {},
     assets: {},
   };
@@ -938,14 +973,14 @@ function printBuildReport(
 
     if (entry.type === 'page') {
       pageCount++;
-      let mode = 'SSR';
-      if (entry.prerendered) {
+      const routeMode = entry.renderMode ?? 'ssr';
+      let mode = routeMode.toUpperCase();
+      if (routeMode === 'ssg') {
         ssgCount++;
         if (entry.prerenderedCount) {
           mode = `SSG (${entry.prerenderedCount})`;
           prerenderTotal += entry.prerenderedCount;
         } else {
-          mode = 'SSG';
           prerenderTotal += 1;
         }
       }
