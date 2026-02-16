@@ -1,9 +1,20 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
+import { join, resolve, dirname } from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { input, select, confirm } from "@inquirer/prompts";
 import pc from "picocolors";
 import { createRequire } from "node:module";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const LOGO = `
 ██████╗ ██╗   ██╗██████╗  █████╗
@@ -168,374 +179,49 @@ function validateProjectName(name: string): true | string {
   return true;
 }
 
-// ── File generators: Vanilla ─────────────────────────────────────────
+// ── Template copying ─────────────────────────────────────────────────
 
-function generateVanillaPackageJson(projectName: string, ts: boolean): string {
-  const content: Record<string, unknown> = {
-    name: projectName,
-    version: "0.1.0",
-    private: true,
-    type: "module",
-    scripts: {
-      dev: "pyra dev",
-      build: "pyra build",
-    },
-    devDependencies: ts
-      ? { "pyrajs-cli": `^${VERSION}`, typescript: "^5.9.3" }
-      : { "pyrajs-cli": `^${VERSION}` },
-  };
-  return JSON.stringify(content, null, 2) + "\n";
-}
+function copyTemplate(
+  framework: Framework,
+  language: Language,
+  projectDir: string,
+  projectName: string,
+): void {
+  const lang = language === "typescript" ? "ts" : "js";
+  const templateName = `template-${framework}-${lang}`;
+  const templateDir = resolve(__dirname, "..", templateName);
 
-function generateVanillaIndexHtml(projectName: string, ts: boolean): string {
-  const ext = ts ? "ts" : "js";
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${projectName}</title>
-</head>
-<body>
-  <div id="app"></div>
-  <script type="module" src="/src/index.${ext}"></script>
-</body>
-</html>
-`;
-}
-
-function generateVanillaPyraConfig(ts: boolean): string {
-  const ext = ts ? "ts" : "js";
-  return `import { defineConfig } from 'pyrajs-cli';
-
-export default defineConfig({
-  entry: 'src/index.${ext}',
-  outDir: 'dist',
-  port: 3000,
-});
-`;
-}
-
-function generateVanillaTsConfig(): string {
-  const config = {
-    compilerOptions: {
-      target: "ES2020",
-      module: "ESNext",
-      moduleResolution: "Bundler",
-      lib: ["ES2020", "DOM", "DOM.Iterable"],
-      strict: true,
-      esModuleInterop: true,
-      skipLibCheck: true,
-      forceConsistentCasingInFileNames: true,
-      resolveJsonModule: true,
-      noEmit: true,
-    },
-    include: ["src/**/*"],
-    exclude: ["node_modules", "dist"],
-  };
-  return JSON.stringify(config, null, 2) + "\n";
-}
-
-function generateVanillaEntry(ts: boolean): string {
-  if (ts) {
-    return `import './style.css';
-
-const app = document.querySelector<HTMLDivElement>('#app')!;
-
-app.innerHTML = \`
-  <div class="container">
-    <h1>Welcome to Pyra.js!</h1>
-    <p>Edit <code>src/index.ts</code> and save to reload.</p>
-    <button id="counter">Count: 0</button>
-  </div>
-\`;
-
-// Simple counter example
-const button = document.querySelector<HTMLButtonElement>('#counter')!;
-let count = 0;
-
-button.addEventListener('click', () => {
-  count++;
-  button.textContent = \`Count: \${count}\`;
-});
-`;
+  if (!existsSync(templateDir)) {
+    throw new Error(`Template "${templateName}" not found at ${templateDir}`);
   }
 
-  return `import './style.css';
-
-const app = document.querySelector('#app');
-
-app.innerHTML = \`
-  <div class="container">
-    <h1>Welcome to Pyra.js!</h1>
-    <p>Edit <code>src/index.js</code> and save to reload.</p>
-    <button id="counter">Count: 0</button>
-  </div>
-\`;
-
-// Simple counter example
-const button = document.querySelector('#counter');
-let count = 0;
-
-button.addEventListener('click', () => {
-  count++;
-  button.textContent = \`Count: \${count}\`;
-});
-`;
+  copyDir(templateDir, projectDir, projectName, "");
 }
 
-function generateVanillaStyleCSS(): string {
-  return `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+function copyDir(
+  srcDir: string,
+  destDir: string,
+  projectName: string,
+  relPath: string,
+): void {
+  mkdirSync(destDir, { recursive: true });
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  color: #333;
-}
+  for (const file of readdirSync(srcDir)) {
+    const srcPath = join(srcDir, file);
+    const destFile = file === "_gitignore" ? ".gitignore" : file;
+    const destPath = join(destDir, destFile);
+    const rel = relPath ? `${relPath}/${destFile}` : destFile;
 
-.container {
-  background: white;
-  padding: 3rem;
-  border-radius: 1rem;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  text-align: center;
-  max-width: 500px;
-}
-
-h1 {
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-p {
-  color: #666;
-  margin-bottom: 2rem;
-  line-height: 1.6;
-}
-
-code {
-  background: #f4f4f4;
-  padding: 0.2rem 0.5rem;
-  border-radius: 0.25rem;
-  font-family: 'Courier New', monospace;
-  color: #667eea;
-}
-
-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 1rem 2rem;
-  font-size: 1.1rem;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
-}
-
-button:active {
-  transform: translateY(0);
-}
-`;
-}
-
-// ── File generators: React (Full-Stack) ──────────────────────────────
-
-function generateReactPackageJson(projectName: string, ts: boolean): string {
-  const devDeps: Record<string, string> = { "pyrajs-cli": `^${VERSION}` };
-  if (ts) {
-    devDeps["@types/react"] = "^19.0.0";
-    devDeps["@types/react-dom"] = "^19.0.0";
-    devDeps["typescript"] = "^5.7.0";
+    if (statSync(srcPath).isDirectory()) {
+      copyDir(srcPath, destPath, projectName, rel);
+    } else {
+      let content = readFileSync(srcPath, "utf-8");
+      content = content.replaceAll("{{PROJECT_NAME}}", projectName);
+      content = content.replaceAll("{{PYRA_VERSION}}", VERSION);
+      writeFileSync(destPath, content);
+      log.success(rel);
+    }
   }
-
-  const content = {
-    name: projectName,
-    version: "0.1.0",
-    private: true,
-    type: "module",
-    description: "A full-stack app built with Pyra",
-    scripts: {
-      dev: "pyra dev",
-      build: "pyra build",
-      start: "pyra start",
-    },
-    dependencies: {
-      react: "^19.0.0",
-      "react-dom": "^19.0.0",
-    },
-    devDependencies: devDeps,
-  };
-  return JSON.stringify(content, null, 2) + "\n";
-}
-
-function generateReactPyraConfig(ts: boolean): string {
-  return `import { defineConfig } from 'pyrajs-shared';
-
-export default defineConfig({
-  routesDir: 'src/routes',
-});
-`;
-}
-
-function generateReactTsConfig(): string {
-  const config = {
-    compilerOptions: {
-      target: "ES2020",
-      module: "ESNext",
-      moduleResolution: "bundler",
-      jsx: "react-jsx",
-      strict: true,
-      esModuleInterop: true,
-      skipLibCheck: true,
-      forceConsistentCasingInFileNames: true,
-      resolveJsonModule: true,
-      isolatedModules: true,
-    },
-    include: ["src"],
-  };
-  return JSON.stringify(config, null, 2) + "\n";
-}
-
-function generateReactLayout(projectName: string, ts: boolean): string {
-  if (ts) {
-    return `import React from 'react';
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div>
-      <nav style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', gap: '1rem' }}>
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-      </nav>
-      <main style={{ padding: '2rem' }}>
-        {children}
-      </main>
-      <footer style={{ padding: '1rem', borderTop: '1px solid #eee', textAlign: 'center', color: '#999' }}>
-        ${projectName} &mdash; built with Pyra.js
-      </footer>
-    </div>
-  );
-}
-`;
-  }
-
-  return `import React from 'react';
-
-export default function RootLayout({ children }) {
-  return (
-    <div>
-      <nav style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', gap: '1rem' }}>
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-      </nav>
-      <main style={{ padding: '2rem' }}>
-        {children}
-      </main>
-      <footer style={{ padding: '1rem', borderTop: '1px solid #eee', textAlign: 'center', color: '#999' }}>
-        ${projectName} &mdash; built with Pyra.js
-      </footer>
-    </div>
-  );
-}
-`;
-}
-
-function generateReactHomePage(projectName: string, ts: boolean): string {
-  const ext = ts ? "tsx" : "jsx";
-  return `export default function Home() {
-  return (
-    <div>
-      <h1>Welcome to ${projectName}</h1>
-      <p>Your full-stack Pyra.js project is ready.</p>
-      <p>Edit <code>src/routes/page.${ext}</code> to get started.</p>
-    </div>
-  );
-}
-`;
-}
-
-function generateReactAboutPage(): string {
-  return `export const prerender = true;
-
-export default function About() {
-  return (
-    <div>
-      <h1>About</h1>
-      <p>This page is statically prerendered at build time.</p>
-    </div>
-  );
-}
-`;
-}
-
-function generateReactHealthRoute(ts: boolean): string {
-  if (ts) {
-    return `import type { RequestContext } from 'pyrajs-shared';
-
-export function GET(ctx: RequestContext) {
-  return ctx.json({ status: 'ok', timestamp: new Date().toISOString() });
-}
-`;
-  }
-
-  return `export function GET(ctx) {
-  return ctx.json({ status: 'ok', timestamp: new Date().toISOString() });
-}
-`;
-}
-
-// ── File generators: Shared ──────────────────────────────────────────
-
-function generateGitignore(): string {
-  return `# Dependencies
-node_modules/
-
-# Build output
-dist/
-build/
-.pyra/
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-`;
 }
 
 // ── Tailwind generators ──────────────────────────────────────────────
@@ -735,103 +421,6 @@ function injectCSSImport(entryFilePath: string): void {
   writeFileSync(entryFilePath, 'import "./index.css";\n' + content, "utf-8");
 }
 
-// ── Scaffolding: write project files ─────────────────────────────────
-
-function scaffoldVanilla(
-  projectDir: string,
-  projectName: string,
-  lang: Language,
-): void {
-  const ts = lang === "typescript";
-  const ext = ts ? "ts" : "js";
-  const srcDir = join(projectDir, "src");
-
-  mkdirSync(srcDir, { recursive: true });
-
-  writeFileSync(
-    join(projectDir, "package.json"),
-    generateVanillaPackageJson(projectName, ts),
-  );
-  log.success("package.json");
-
-  writeFileSync(
-    join(projectDir, "index.html"),
-    generateVanillaIndexHtml(projectName, ts),
-  );
-  log.success("index.html");
-
-  writeFileSync(
-    join(projectDir, `pyra.config.${ext === "ts" ? "ts" : "js"}`),
-    generateVanillaPyraConfig(ts),
-  );
-  log.success(`pyra.config.${ext === "ts" ? "ts" : "js"}`);
-
-  if (ts) {
-    writeFileSync(join(projectDir, "tsconfig.json"), generateVanillaTsConfig());
-    log.success("tsconfig.json");
-  }
-
-  writeFileSync(join(srcDir, `index.${ext}`), generateVanillaEntry(ts));
-  log.success(`src/index.${ext}`);
-
-  writeFileSync(join(srcDir, "style.css"), generateVanillaStyleCSS());
-  log.success("src/style.css");
-}
-
-function scaffoldReact(
-  projectDir: string,
-  projectName: string,
-  lang: Language,
-): void {
-  const ts = lang === "typescript";
-  const jsxExt = ts ? "tsx" : "jsx";
-  const ext = ts ? "ts" : "js";
-  const routesDir = join(projectDir, "src", "routes");
-  const aboutDir = join(routesDir, "about");
-  const apiHealthDir = join(routesDir, "api", "health");
-
-  mkdirSync(apiHealthDir, { recursive: true });
-  mkdirSync(aboutDir, { recursive: true });
-
-  writeFileSync(
-    join(projectDir, "package.json"),
-    generateReactPackageJson(projectName, ts),
-  );
-  log.success("package.json");
-
-  writeFileSync(
-    join(projectDir, `pyra.config.${ext}`),
-    generateReactPyraConfig(ts),
-  );
-  log.success(`pyra.config.${ext}`);
-
-  if (ts) {
-    writeFileSync(join(projectDir, "tsconfig.json"), generateReactTsConfig());
-    log.success("tsconfig.json");
-  }
-
-  writeFileSync(
-    join(routesDir, `layout.${jsxExt}`),
-    generateReactLayout(projectName, ts),
-  );
-  log.success(`src/routes/layout.${jsxExt}`);
-
-  writeFileSync(
-    join(routesDir, `page.${jsxExt}`),
-    generateReactHomePage(projectName, ts),
-  );
-  log.success(`src/routes/page.${jsxExt}`);
-
-  writeFileSync(join(aboutDir, `page.${jsxExt}`), generateReactAboutPage());
-  log.success(`src/routes/about/page.${jsxExt}`);
-
-  writeFileSync(
-    join(apiHealthDir, `route.${ext}`),
-    generateReactHealthRoute(ts),
-  );
-  log.success(`src/routes/api/health/route.${ext}`);
-}
-
 function scaffoldTailwind(
   projectDir: string,
   framework: Framework,
@@ -972,16 +561,7 @@ async function main(): Promise<void> {
   console.log();
 
   mkdirSync(projectDir, { recursive: true });
-
-  if (framework === "vanilla") {
-    scaffoldVanilla(projectDir, projectName, language);
-  } else {
-    scaffoldReact(projectDir, projectName, language);
-  }
-
-  writeFileSync(join(projectDir, ".gitignore"), generateGitignore());
-  log.success(".gitignore");
-
+  copyTemplate(framework, language, projectDir, projectName);
   scaffoldTailwind(projectDir, framework, language, tailwind);
 
   // ── Install ─────────────────────────────────────────────────────────
