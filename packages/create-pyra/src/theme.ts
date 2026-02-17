@@ -1,6 +1,6 @@
 import pc from "picocolors";
 
-// ── Color Palette ────────────────────────────────────────────────────
+// Color Palette
 // Consistent across the entire wizard. Accent = cyan, brand = red.
 
 export const S = {
@@ -23,7 +23,7 @@ export const S = {
   bold: (s: string) => pc.bold(s),
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// Helpers
 
 /**
  * Format step progress indicator.

@@ -10,13 +10,22 @@ import { join, resolve, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import * as p from "@clack/prompts";
+import * as prompt from "@clack/prompts";
 import pc from "picocolors";
 import { S, stepLabel, summaryRow } from "./theme.js";
 import { formatFileTree } from "./tree.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const LOGO = `
+██████╗ ██╗   ██╗██████╗  █████╗
+██╔══██╗╚██╗ ██╔╝██╔══██╗██╔══██╗
+██████╔╝ ╚████╔╝ ██████╔╝███████║
+██╔═══╝   ╚██╔╝  ██╔══██╗██╔══██║
+██║        ██║   ██║  ██║██║  ██║
+╚═╝        ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
+`;
 
 // Version
 const require = createRequire(import.meta.url);
@@ -485,8 +494,8 @@ const TAILWIND_LABELS: Record<TailwindPreset, string> = {
 
 // Cancellation Helper
 function onCancel(value: unknown): void {
-  if (p.isCancel(value)) {
-    p.cancel("Setup cancelled.");
+  if (prompt.isCancel(value)) {
+    prompt.cancel("Setup cancelled.");
     process.exit(0);
   }
 }
@@ -501,7 +510,8 @@ async function main(): Promise<void> {
 
   // Intro
   console.log();
-  p.intro(
+  console.log(`${S.brandBold(LOGO)}`)
+  prompt.intro(
     `${S.brandBold("Pyra")} ${S.dim(`v${VERSION}`)} ${S.dim("-")} ${S.dim("create a new project")}`,
   );
 
@@ -509,7 +519,7 @@ async function main(): Promise<void> {
   const detectedPM = pmOverride || (await autoDetectPM());
 
   // Dynamic step count: vanilla skips rendering mode
-  let totalSteps = 6;
+  let totalSteps = 7;
   let currentStep = 0;
 
   const next = (label: string) => stepLabel(++currentStep, totalSteps, label);
@@ -520,15 +530,15 @@ async function main(): Promise<void> {
   if (nameArg) {
     const err = validateProjectName(nameArg);
     if (err) {
-      p.cancel(err);
+      prompt.cancel(err);
       process.exit(1);
     }
     projectName = nameArg;
-    p.log.step(
+    prompt.log.step(
       `${next("Project name")}  ${S.accent(projectName)} ${S.dim("(from args)")}`,
     );
   } else {
-    const name = await p.text({
+    const name = await prompt.text({
       message: next("Project name"),
       placeholder: "my-pyra-app",
       defaultValue: "my-pyra-app",
@@ -541,12 +551,12 @@ async function main(): Promise<void> {
   const projectDir = resolve(process.cwd(), projectName);
 
   if (existsSync(projectDir)) {
-    p.cancel(`Directory "${projectName}" already exists.`);
+    prompt.cancel(`Directory "${projectName}" already exists.`);
     process.exit(1);
   }
 
   // Step 2: Framework
-  const framework = (await p.select({
+  const framework = (await prompt.select({
     message: next("Framework"),
     options: [
       {
@@ -570,14 +580,14 @@ async function main(): Promise<void> {
 
   // Adjust total steps: vanilla has no rendering mode prompt
   if (framework === "vanilla") {
-    totalSteps = 5;
+    totalSteps = 6;
   }
 
   // Step 3: Rendering Mode (React/Preact only)
   let appMode: AppMode = "spa";
 
   if (framework !== "vanilla") {
-    appMode = (await p.select({
+    appMode = (await prompt.select({
       message: next("Rendering mode"),
       options: [
         {
@@ -596,7 +606,7 @@ async function main(): Promise<void> {
   }
 
   // Step N: Variant
-  const language = (await p.select({
+  const language = (await prompt.select({
     message: next("Variant"),
     options: [
       {
@@ -614,7 +624,7 @@ async function main(): Promise<void> {
   onCancel(language);
 
   // Step N: Tailwind
-  const tailwind = (await p.select({
+  const tailwind = (await prompt.select({
     message: next("Tailwind CSS"),
     options: [
       { value: "none" as TailwindPreset, label: "No", hint: "skip" },
@@ -637,11 +647,11 @@ async function main(): Promise<void> {
 
   if (pmOverride) {
     chosenPM = pmOverride;
-    p.log.step(
+    prompt.log.step(
       `${next("Package manager")}  ${S.accent(chosenPM)} ${S.dim("(from --pm)")}`,
     );
   } else {
-    chosenPM = (await p.select({
+    chosenPM = (await prompt.select({
       message: next("Package manager"),
       initialValue: detectedPM,
       options: [
@@ -654,6 +664,22 @@ async function main(): Promise<void> {
     onCancel(chosenPM);
   }
 
+  // Step N: Install Dependencies
+  let shouldInstall = false;
+
+  if (skipInstall) {
+    prompt.log.step(
+      `${next("Install dependencies")}  ${S.dim("No")} ${S.dim("(from --skip-install)")}`,
+    );
+  } else {
+    const install = await prompt.confirm({
+      message: next("Install dependencies?"),
+      initialValue: true,
+    });
+    onCancel(install);
+    shouldInstall = install as boolean;
+  }
+
   // Summary
   const summaryLines = [
     summaryRow("Project", projectName),
@@ -664,23 +690,24 @@ async function main(): Promise<void> {
     summaryRow("Variant", LANGUAGE_LABELS[language]),
     summaryRow("Tailwind", TAILWIND_LABELS[tailwind]),
     summaryRow("Package Mgr", chosenPM),
+    summaryRow("Install", shouldInstall ? "Yes" : "No"),
   ];
 
-  p.note(summaryLines.join("\n"), "Summary");
+  prompt.note(summaryLines.join("\n"), "Summary");
 
   // Confirm
-  const confirmed = await p.confirm({
+  const confirmed = await prompt.confirm({
     message: "Create project?",
   });
   onCancel(confirmed);
 
   if (!confirmed) {
-    p.cancel("Setup cancelled.");
+    prompt.cancel("Setup cancelled.");
     process.exit(0);
   }
 
   // Scaffold
-  const spin = p.spinner();
+  const spin = prompt.spinner();
   spin.start("Scaffolding project...");
 
   mkdirSync(projectDir, { recursive: true });
@@ -706,10 +733,10 @@ async function main(): Promise<void> {
   spin.stop(S.success("Project scaffolded"));
 
   // File Tree
-  p.note(formatFileTree(allFiles), "Project structure");
+  prompt.note(formatFileTree(allFiles), "Project structure");
 
   // Install Dependencies
-  if (!skipInstall) {
+  if (shouldInstall) {
     spin.start(`Installing dependencies with ${S.bold(chosenPM)}...`);
 
     try {
@@ -717,7 +744,7 @@ async function main(): Promise<void> {
       spin.stop(S.success("Dependencies installed"));
     } catch {
       spin.stop(S.warn("Failed to install dependencies"));
-      p.log.warn(
+      prompt.log.warn(
         `Run ${S.bold(`${chosenPM} install`)} manually in the project directory`,
       );
     }
@@ -726,11 +753,11 @@ async function main(): Promise<void> {
   // Outro
   const nextSteps = [
     `cd ${S.accent(projectName)}`,
-    ...(skipInstall ? [`${S.accent(chosenPM)} install`] : []),
+    ...(!shouldInstall ? [`${S.accent(chosenPM)} install`] : []),
     `${S.accent(`${chosenPM} run`)} dev`,
   ];
 
-  p.outro(
+  prompt.outro(
     `${S.successBold("Done!")} Next steps:\n\n${nextSteps.map((s) => `  ${s}`).join("\n")}`,
   );
 }
@@ -739,9 +766,9 @@ async function main(): Promise<void> {
 main().catch((err) => {
   if (err.name === "ExitPromptError") {
     console.log();
-    p.cancel("Cancelled.");
+    prompt.cancel("Cancelled.");
     process.exit(0);
   }
-  p.cancel(err.message || String(err));
+  prompt.cancel(err.message || String(err));
   process.exit(1);
 });

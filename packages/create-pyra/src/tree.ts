@@ -1,6 +1,6 @@
 import pc from "picocolors";
 
-// ── File Tree Formatter ──────────────────────────────────────────────
+// File Tree Formatter
 // Turns a flat list of relative paths into an indented tree display.
 // Root files first (sorted), then directories (sorted), recursively.
 

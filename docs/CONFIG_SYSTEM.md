@@ -1,454 +1,599 @@
-# Pyra Configuration System
+# Configuration
 
-Complete reference for the Pyra.js configuration system.
-
----
-
-## Overview
-
-Pyra's configuration system is designed around three core principles:
-
-1. **Zero-config by default** - Works without any setup
-2. **Familiar and intuitive** - TypeScript-first with full IntelliSense
-3. **Powerfully extensible** - Supports plugins, modes, and overrides
+Everything you need to know about configuring Pyra.js — from zero-config defaults to advanced customization.
 
 ---
 
-## How It Works
+## How Configuration Works
 
-### 1. Auto-Discovery
+Pyra is designed to work without any configuration at all. Run `pyra dev` in a project and sensible defaults kick in. When you need to customize behavior, create a config file and Pyra picks it up automatically — no flags, no manual imports.
 
-When you run `pyra dev` or `pyra build`, Pyra automatically searches for config files:
+Configuration comes from three sources, merged in this order:
+
+```
+Built-in Defaults       (entry: 'src/index.ts', port: 3000, ...)
+  ↓ overridden by
+Config File             (pyra.config.ts)
+  ↓ overridden by
+CLI Flags               (--port 8080, --mode production)
+```
+
+CLI flags always win. This means you can keep a stable config file and override individual values per command without maintaining separate config files for different environments.
+
+---
+
+## Config File Discovery
+
+When you run any Pyra command (`dev`, `build`, `start`), it searches your project root for a config file in this order:
+
+| Priority | File Name |
+|----------|-----------|
+| 1 | `pyra.config.ts` |
+| 2 | `pyra.config.js` |
+| 3 | `pyra.config.mjs` |
+| 4 | `pyra.config.cjs` |
+| 5 | `.pyrarc.ts` |
+| 6 | `.pyrarc.js` |
+| 7 | `.pyrarc.mjs` |
+
+Pyra uses the first file it finds and ignores the rest. TypeScript is recommended — you get full IntelliSense and type checking with no extra setup.
+
+If no config file exists, Pyra runs with defaults. No warning, no error. You only need a config file when you want to change something.
+
+---
+
+## Creating a Config File
+
+The simplest way to get started:
 
 ```bash
-Project Root
-├── pyra.config.ts    ← Looks here first ⭐
-├── pyra.config.js    ← Then here
-├── pyra.config.mjs   ← Then here
-├── .pyrarc.ts        ← Alternative names
-└── src/
+pyra init
 ```
 
-**No manual loading required!** Pyra finds and loads the first matching file.
+This creates a `pyra.config.ts` in your project root. You can also create one manually:
 
-### 2. Configuration Loading
+```ts
+// pyra.config.ts
+import { defineConfig } from 'pyrajs-shared';
 
-The loading process (implemented in `packages/shared/src/config-loader.ts`):
-
-```typescript
-// 1. Discover config file
-const configPath = findConfigFile(process.cwd());
-
-// 2. Load and parse (supports both static and function configs)
-const config = await loadConfigFile(configPath, mode);
-
-// 3. Merge with defaults
-const finalConfig = resolveConfig(config, mode);
-
-// 4. CLI flags override config values
-const port = cliOptions.port || finalConfig.server?.port || 3000;
-```
-
-### 3. Configuration Priority
-
-Settings are applied in this order (later overrides earlier):
-
-```bash
-1. Defaults        (entry: 'src/index.ts', port: 3000, etc.)
-   ↓
-2. Config File     (pyra.config.ts values)
-   ↓
-3. CLI Flags       (--port 8080, --mode production)
-   ↓
-4. Final Config    (merged and resolved)
-```
-
----
-
-## File Structure
-
-### Type Definitions
-
-**Location:** `packages/shared/src/types.ts`
-
-```typescript
-export type PyraConfig = {
-  entry?: string | string[] | Record<string, string>;
-  outDir?: string;
-  port?: number;
-  mode?: PyraMode;
-  server?: DevServerConfig;
-  build?: BuildConfig;
-  resolve?: ResolveConfig;
-  env?: EnvConfig;
-  plugins?: PyraPlugin[];
-  // ... more options
-};
-```
-
-### Config Loader
-
-**Location:** `packages/shared/src/config-loader.ts`
-
-**Key Functions:**
-
-- `findConfigFile(root)` - Discovers config files
-- `loadConfigFile(path, mode)` - Loads and parses config
-- `resolveConfig(config, mode)` - Merges with defaults
-- `loadConfig(options)` - Main entry point (used by CLI)
-
-### CLI Integration
-
-**Location:** `packages/cli/src/bin.ts`
-
-```typescript
-import { loadConfig, getPort } from '@pyra/shared';
-
-// In dev command
-const config = await loadConfig({
-  mode: options.mode,
-  configFile: options.config,
+export default defineConfig({
+  port: 8080,
+  routesDir: 'src/routes',
 });
-
-const port = options.port || getPort(config);
 ```
+
+`defineConfig` is a no-op at runtime — it returns the exact object you pass in. Its purpose is to give your editor IntelliSense for every config option, so you get autocomplete and catch typos immediately.
 
 ---
 
 ## Configuration Types
 
-### 1. Static Configuration
+### Static Configuration
 
-Simple object export:
+The most common form. Export a plain object:
 
-```typescript
-// pyra.config.ts
-import { defineConfig } from '@pyra/shared';
+```ts
+import { defineConfig } from 'pyrajs-shared';
 
 export default defineConfig({
-  entry: 'src/index.ts',
+  entry: 'src/main.tsx',
   port: 3000,
+  build: {
+    minify: true,
+    sourcemap: false,
+  },
 });
 ```
 
-### 2. Function-Based Configuration
+### Mode-Aware Configuration
 
-Dynamic config based on mode:
+Use `defineConfigFn` when you need different settings for development and production. The function receives the current mode and returns the config:
 
-```typescript
-// pyra.config.ts
-import { defineConfigFn } from '@pyra/shared';
+```ts
+import { defineConfigFn } from 'pyrajs-shared';
 
 export default defineConfigFn((mode) => ({
   build: {
     minify: mode === 'production',
+    sourcemap: mode === 'development' ? 'inline' : false,
   },
 }));
 ```
 
-### 3. Async Configuration
+The `mode` value is `'development'` when running `pyra dev` and `'production'` when running `pyra build`.
 
-Load external data:
+### Async Configuration
 
-```typescript
-// pyra.config.ts
-import { defineConfig } from '@pyra/shared';
+If your config depends on external data (like reading from a file or API), you can return a promise:
+
+```ts
+import { defineConfig } from 'pyrajs-shared';
 
 export default defineConfig(async () => {
-  const data = await fetchSomeData();
+  const data = await loadSomeExternalConfig();
   return {
-    define: { __DATA__: JSON.stringify(data) },
+    define: { __BUILD_ID__: JSON.stringify(data.buildId) },
   };
 });
 ```
 
 ---
 
-## Usage Examples
+## Full Configuration Reference
 
-### For Users (Application Developers)
+Here is every option Pyra accepts, grouped by category.
 
-**Step 1:** Create `pyra.config.ts` in project root
+### Core Options
 
-```typescript
-import { defineConfig } from '@pyra/shared';
+Top-level options that control the basics of your project.
 
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `entry` | `string \| string[] \| Record<string, string>` | `'src/index.ts'` | Application entry point(s) |
+| `outDir` | `string` | `'dist'` | Output directory for production builds (shorthand for `build.outDir`) |
+| `port` | `number` | `3000` | Dev server port (shorthand for `server.port`) |
+| `mode` | `'development' \| 'production'` | varies | Build mode. Set automatically by the command (`dev` = development, `build` = production) |
+| `root` | `string` | `process.cwd()` | Project root directory |
+| `routesDir` | `string` | `'src/routes'` | Directory containing route files, relative to root |
+| `appContainerId` | `string` | `'app'` | DOM element ID where the app mounts on the client |
+| `renderMode` | `'ssr' \| 'spa' \| 'ssg'` | `'ssr'` | Global rendering mode for all routes. Individual routes can override this |
+| `adapter` | `string \| PyraAdapter \| false` | — | UI framework adapter (e.g., `'react'`). Set to `false` for no SSR |
+| `define` | `Record<string, any>` | — | Global constants replaced at build time |
+
+```ts
 export default defineConfig({
   entry: 'src/main.tsx',
-  port: 8080,
-  resolve: {
-    alias: { '@': './src' },
+  outDir: 'dist',
+  port: 3000,
+  root: '.',
+  routesDir: 'src/routes',
+  appContainerId: 'app',
+  renderMode: 'ssr',
+  adapter: 'react',
+  define: {
+    __APP_VERSION__: JSON.stringify('1.0.0'),
   },
 });
 ```
 
-**Step 2:** Run Pyra
+Note that `outDir` and `port` are shorthands. If you also set `build.outDir` or `server.port`, the nested version takes precedence.
 
-```bash
-npx pyra dev  # Config auto-loaded! 🎉
+---
+
+### Server Options
+
+Control the development server's behavior. Nested under `server`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `port` | `number` | `3000` | Port to listen on |
+| `host` | `string` | `'localhost'` | Host to bind to. Set to `'0.0.0.0'` or `true` for LAN access |
+| `https` | `boolean` | `false` | Enable HTTPS for local development |
+| `open` | `boolean` | `false` | Open the browser automatically on server start |
+| `hmr` | `boolean` | `true` | Enable Hot Module Replacement via WebSocket |
+| `cors` | `boolean` | `true` | Enable CORS headers |
+| `proxy` | `Record<string, string \| ProxyConfig>` | — | Proxy API requests to another server during development |
+
+```ts
+export default defineConfig({
+  server: {
+    port: 5173,
+    host: '0.0.0.0',
+    open: true,
+    cors: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
+});
 ```
 
-### For Plugin Authors
+Proxying is useful when your API runs on a separate server during development. Pyra forwards matching requests to the target, avoiding CORS issues without changing your frontend code.
 
-```typescript
-import type { PyraPlugin } from '@pyra/shared';
+If the configured port is already in use, Pyra automatically finds the next available port and tells you which one it picked.
 
-export function myPlugin(): PyraPlugin {
+---
+
+### Build Options
+
+Control the production build pipeline. Nested under `build`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `outDir` | `string` | `'dist'` | Output directory |
+| `sourcemap` | `boolean \| 'inline' \| 'external'` | `false` | Generate source maps |
+| `minify` | `boolean` | `true` | Minify output for production |
+| `target` | `string \| string[]` | `'es2020'` | JavaScript target environment |
+| `external` | `string[]` | — | Dependencies to exclude from the bundle |
+| `splitting` | `boolean` | `true` | Enable code splitting for shared chunks |
+| `publicDir` | `string` | `'public'` | Directory for static assets copied to output |
+| `base` | `string` | `'/'` | Base public path for all assets |
+| `chunkSizeWarningLimit` | `number` | `500` | Warn when a chunk exceeds this size (KB) |
+
+```ts
+export default defineConfig({
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+    minify: true,
+    target: 'es2020',
+    external: ['react', 'react-dom'],
+    splitting: true,
+  },
+});
+```
+
+The build produces three outputs:
+- `dist/client/` — Browser assets (JS, CSS, static files) with content-hashed filenames
+- `dist/server/` — Node.js SSR modules and API handlers
+- `dist/manifest.json` — Maps routes to their built assets
+
+---
+
+### Resolve Options
+
+Control how Pyra resolves module imports. Nested under `resolve`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `alias` | `Record<string, string>` | — | Path aliases for imports |
+| `extensions` | `string[]` | `['.ts', '.tsx', '.js', '.jsx', '.json']` | File extensions to try when resolving imports |
+| `mainFields` | `string[]` | `['module', 'main']` | Fields to check in `package.json` when resolving packages |
+| `conditions` | `string[]` | — | Conditions for the `package.json` exports field |
+
+```ts
+export default defineConfig({
+  resolve: {
+    alias: {
+      '@': './src',
+      '@components': './src/components',
+      '@utils': './src/shared/utils',
+    },
+    extensions: ['.ts', '.tsx', '.js', '.jsx'],
+  },
+});
+```
+
+Aliases are resolved before anything else, so `import { Button } from '@components/Button'` becomes `import { Button } from './src/components/Button'`. If your `tsconfig.json` defines `paths`, keep them aligned with your Pyra aliases so TypeScript and the bundler agree on where files live.
+
+---
+
+### Environment Variables
+
+Control how Pyra loads and exposes environment variables. Nested under `env`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `dir` | `string` | project root | Directory containing `.env` files |
+| `prefix` | `string \| string[]` | `'PYRA_'` | Only variables with this prefix are exposed to client code |
+| `files` | `string[]` | — | Additional `.env` files to load |
+
+```ts
+export default defineConfig({
+  env: {
+    prefix: ['PYRA_', 'PUBLIC_'],
+    files: ['.env.local'],
+  },
+});
+```
+
+Pyra loads environment files in layers. Each file overrides the previous:
+
+```
+.env                    Base values (committed to git)
+  ↓ overridden by
+.env.local              Local overrides (gitignored)
+  ↓ overridden by
+.env.[mode]             Mode-specific values (.env.development, .env.production)
+```
+
+Only variables matching the configured prefix are exposed to client-side code through the `RequestContext.env` object. This is a security boundary — unprefixed variables like `DATABASE_URL` or `API_SECRET` are never sent to the browser.
+
+In server-side code (`load()` functions, API routes, middleware), you can access filtered env vars from the `context.env` object:
+
+```ts
+export async function load(context: RequestContext) {
+  const apiUrl = context.env.API_URL; // from PYRA_API_URL
+  const data = await fetch(apiUrl);
+  return data.json();
+}
+```
+
+---
+
+### Rendering Modes
+
+Pyra supports three rendering modes, configurable globally or per-route.
+
+| Mode | Behavior |
+|------|----------|
+| `ssr` (default) | Server-renders on every request, then hydrates on the client. Best for dynamic, interactive pages. |
+| `ssg` | Prerendered to static HTML at build time. Best for content that rarely changes (blog posts, marketing pages). |
+| `spa` | Serves an HTML shell, renders entirely on the client. Best for client-only apps behind authentication. |
+
+Set the global default in your config:
+
+```ts
+export default defineConfig({
+  renderMode: 'ssr',
+});
+```
+
+Override per-route by exporting `render` from a page module:
+
+```ts
+// src/routes/about/page.tsx
+export const render = 'ssg';
+
+export default function About() {
+  return <h1>About Us</h1>;
+}
+```
+
+Resolution priority (first match wins):
+1. `export const render = '...'` on the route module
+2. `export const prerender = true` on the route module (treated as `'ssg'`)
+3. Global `renderMode` in `pyra.config.ts`
+
+---
+
+### Request Tracing
+
+Control the transparency layer that shows exactly what happens during each request. Nested under `trace`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `production` | `'off' \| 'header' \| 'on'` | `'off'` | When to enable tracing in production |
+| `bufferSize` | `number` | `200` | Number of traces to keep in the ring buffer |
+
+```ts
+export default defineConfig({
+  trace: {
+    production: 'header',
+    bufferSize: 500,
+  },
+});
+```
+
+In development, tracing is always on — every request logs a structured trace to the terminal showing route matching, middleware execution, data loading, rendering, and asset injection with timing for each stage.
+
+In production, the three modes are:
+- `'off'` — No tracing, zero overhead (default)
+- `'header'` — Trace only when the request includes `X-Pyra-Trace: 1`
+- `'on'` — Trace every request (useful for staging environments)
+
+Traced responses include a `Server-Timing` header in W3C format, which Chrome DevTools renders as a timing waterfall in the Network panel.
+
+---
+
+### Build Report
+
+Control the post-build summary. Nested under `buildReport`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `warnSize` | `number` | `51200` (50 KB) | Warn when a route's client JS exceeds this size in bytes |
+
+```ts
+export default defineConfig({
+  buildReport: {
+    warnSize: 102400, // warn at 100 KB instead of 50 KB
+  },
+});
+```
+
+After every `pyra build`, Pyra prints a per-route report showing bundle sizes, render modes, data loaders, middleware counts, and layout chains. Routes exceeding the `warnSize` threshold are highlighted.
+
+---
+
+### Plugins
+
+Extend Pyra's behavior with plugins. The `plugins` array accepts objects implementing the `PyraPlugin` interface.
+
+| Hook | When It Runs | Purpose |
+|------|-------------|---------|
+| `config(config, mode)` | Before config is finalized | Modify the config object |
+| `setup(api)` | When the build pipeline is constructed | Register esbuild plugins, add middleware |
+| `transform(code, id)` | Per-module during compilation | Transform source code |
+| `serverStart(server)` | When the dev server starts | Access the running server |
+| `buildStart()` | Before the build begins | Run pre-build tasks |
+| `buildEnd()` | After the build completes | Run post-build tasks |
+
+```ts
+import type { PyraPlugin } from 'pyrajs-shared';
+
+function myPlugin(): PyraPlugin {
   return {
     name: 'my-plugin',
     config(config, mode) {
-      // Modify config before it's finalized
       return {
         ...config,
         define: {
           ...config.define,
-          __PLUGIN__: true,
+          __PLUGIN_ACTIVE__: true,
         },
       };
     },
     setup(api) {
       const config = api.getConfig();
-      // Use config values
+      // Register esbuild plugins, middleware, etc.
+    },
+    transform(code, id) {
+      if (id.endsWith('.special')) {
+        return { code: transformSpecialFile(code) };
+      }
+      return null; // no transform for this file
     },
   };
 }
+
+export default defineConfig({
+  plugins: [myPlugin()],
+});
 ```
 
 ---
 
-## CLI Commands
+### Features
 
-### `pyra dev`
+Toggle built-in features. Nested under `features`.
 
-```bash
-pyra dev [options]
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cssModules` | `boolean` | `true` | Enable CSS modules (`*.module.css`) |
+| `typeCheck` | `boolean` | `true` | Enable TypeScript type checking |
+| `jsx` | `boolean` | `true` | Enable JSX/TSX support |
 
-Options:
-  -p, --port <number>    Dev server port
-  -o, --open            Open browser on start
-  -c, --config <path>   Path to config file
-  --mode <mode>         Build mode (development|production)
-```
-
-### `pyra build`
-
-```bash
-pyra build [options]
-
-Options:
-  -o, --out-dir <path>  Output directory
-  --minify              Enable minification
-  --sourcemap           Generate sourcemaps
-  -c, --config <path>   Path to config file
-  --mode <mode>         Build mode (default: production)
+```ts
+export default defineConfig({
+  features: {
+    cssModules: true,
+    typeCheck: false, // disable if using a separate tsc process
+  },
+});
 ```
 
 ---
 
-## Configuration Reference
+### Advanced: esbuild Options
 
-### Core Options
+Pass custom options directly to esbuild. Nested under `esbuild`. This is an escape hatch — most projects should not need it.
 
-```typescript
-{
-  // Entry point(s)
-  entry: 'src/index.ts',
-  // or: ['src/a.ts', 'src/b.ts']
-  // or: { main: 'src/main.ts', admin: 'src/admin.ts' }
-
-  // Output directory (shorthand for build.outDir)
-  outDir: 'dist',
-
-  // Dev server port (shorthand for server.port)
-  port: 3000,
-
-  // Build mode
-  mode: 'development' | 'production',
-
-  // Project root
-  root: process.cwd(),
-}
+```ts
+export default defineConfig({
+  esbuild: {
+    jsxFactory: 'h',
+    jsxFragment: 'Fragment',
+    legalComments: 'none',
+  },
+});
 ```
 
-### Server Options
+---
 
-```typescript
-{
-  server: {
-    port: 3000,
-    host: 'localhost',
-    https: false,
-    open: false,
-    hmr: true,
-    cors: true,
-    proxy: {
-      '/api': 'http://localhost:4000',
+## Complete Example
+
+A real-world config for a full-stack SSR application:
+
+```ts
+// pyra.config.ts
+import { defineConfigFn } from 'pyrajs-shared';
+
+export default defineConfigFn((mode) => {
+  const isDev = mode === 'development';
+
+  return {
+    routesDir: 'src/routes',
+    adapter: 'react',
+    renderMode: 'ssr',
+    appContainerId: 'root',
+
+    server: {
+      port: 3000,
+      open: isDev,
+      cors: true,
+      proxy: isDev ? {
+        '/api/external': {
+          target: 'http://localhost:4000',
+          changeOrigin: true,
+        },
+      } : undefined,
     },
-  }
-}
-```
 
-### Build Options
-
-```typescript
-{
-  build: {
-    outDir: 'dist',
-    sourcemap: true | false | 'inline' | 'external',
-    minify: true,
-    target: 'es2020' | ['es2020', 'chrome91'],
-    external: ['react', 'react-dom'],
-    splitting: true,
-  }
-}
-```
-
-### Resolve Options
-
-```typescript
-{
-  resolve: {
-    alias: {
-      '@': './src',
-      '@components': './src/components',
+    build: {
+      outDir: 'dist',
+      sourcemap: isDev ? 'inline' : false,
+      minify: !isDev,
+      target: 'es2020',
+      splitting: true,
     },
-    extensions: ['.ts', '.tsx', '.js', '.jsx'],
-  }
-}
-```
 
-### Environment Variables
+    resolve: {
+      alias: {
+        '@': './src',
+        '@components': './src/components',
+      },
+    },
 
-```typescript
-{
-  env: {
-    dir: process.cwd(),
-    prefix: 'PYRA_', // Only PYRA_* vars exposed to client
-    files: ['.env.local'],
-  }
-}
-```
+    env: {
+      prefix: 'PYRA_',
+    },
 
-### Plugins
+    trace: {
+      production: 'header',
+    },
 
-```typescript
-{
-  plugins: [
-    {
-      name: 'my-plugin',
-      setup(api) { /* ... */ },
-      transform(code, id) { /* ... */ },
-    }
-  ]
-}
+    buildReport: {
+      warnSize: 51200,
+    },
+  };
+});
 ```
 
 ---
 
-## Documentation Files
+## Default Values
 
-- **`examples/QUICK_START.md`** - Get started in 2 minutes
-- **`examples/USAGE.md`** - Detailed usage guide with patterns
-- **`examples/README.md`** - Overview of all example configs
-- **`examples/pyra.config.full.ts`** - Complete API reference with comments
-- **`examples/pyra.config.*.ts`** - Copy-paste templates
+When no config file is present, Pyra uses these defaults:
 
----
-
-## Implementation Details
-
-### Config File Resolution
-
-```typescript
-// packages/shared/src/config-loader.ts
-
-const CONFIG_FILES = [
-  'pyra.config.ts',
-  'pyra.config.js',
-  'pyra.config.mjs',
-  'pyra.config.cjs',
-  '.pyrarc.ts',
-  '.pyrarc.js',
-  '.pyrarc.mjs',
-];
-
-export function findConfigFile(root: string): string | null {
-  for (const fileName of CONFIG_FILES) {
-    const filePath = join(root, fileName);
-    if (existsSync(filePath)) {
-      return filePath;
-    }
-  }
-  return null;
-}
-```
-
-### Dynamic Import
-
-TypeScript config files are loaded using Node's dynamic import:
-
-```typescript
-const fileUrl = pathToFileURL(configPath).href;
-const configModule = await import(fileUrl);
-let config = configModule.default;
-
-// Handle function configs
-if (typeof config === 'function') {
-  config = await config(mode);
-}
-```
-
-### Default Values
-
-```typescript
-export const DEFAULT_CONFIG = {
+```ts
+{
   entry: 'src/index.ts',
   outDir: 'dist',
   port: 3000,
-  mode: 'development',
+  mode: 'development',     // 'production' for pyra build
   root: process.cwd(),
-};
+  renderMode: 'ssr',
+}
 ```
+
+Every other option is either `undefined` (disabled) or has a sensible default documented in the tables above.
 
 ---
 
-## Testing the Config System
+## CLI Flag Overrides
 
-See `examples/test-config/` for a working demo:
+Every command accepts flags that override config file values. Some common ones:
 
 ```bash
-cd examples/test-config
-pyra dev  # Loads pyra.config.ts automatically!
+# Dev server
+pyra dev --port 8080 --open --mode production --config ./custom.config.ts
+
+# Production build
+pyra build --out-dir build --minify --sourcemap --mode production
+
+# Production server
+pyra start --port 4000 --dist ./build
+```
+
+You can also point to a specific config file with `--config`:
+
+```bash
+pyra dev --config configs/pyra.staging.ts
 ```
 
 ---
 
-## Future Enhancements
+## Validation
 
-- [ ] JSON Schema validation
-- [ ] Config file templates via `pyra init`
-- [ ] Interactive config builder
-- [ ] Config migration tools
-- [ ] Performance profiling for plugin configs
+Pyra validates your config at startup and throws clear errors for common mistakes:
 
----
+- **Missing entry** — `entry` is required (defaults to `'src/index.ts'`)
+- **Invalid port** — must be between 1 and 65535
+- **Missing root** — the `root` directory must exist on disk
 
-## Summary
-
-**For Users:**
-
-1. Create `pyra.config.ts` (or don't, for zero-config!)
-2. Run `pyra dev` or `pyra build`
-3. Config is auto-discovered and loaded
-4. Enjoy full TypeScript IntelliSense
-
-**For Contributors:**
-
-- Config types: `packages/shared/src/types.ts`
-- Config loader: `packages/shared/src/config-loader.ts`
-- CLI integration: `packages/cli/src/bin.ts`
-- Examples: `examples/`
+If validation fails, Pyra logs the specific error and exits before starting the server or build.
 
 ---
 
-**The config system is production-ready and fully functional!** 🎉
+## Tips
+
+- **Start with zero config.** Add options only when you need to change something. The defaults are designed for the most common case.
+- **Use `defineConfig` or `defineConfigFn`.** They provide IntelliSense in your editor and catch typos before runtime.
+- **Keep environment-specific logic in the config function.** Use `defineConfigFn` and branch on `mode` instead of maintaining separate config files.
+- **Align `resolve.alias` with `tsconfig.json` paths.** Both TypeScript and the bundler need to agree on where aliases point.
+- **Scope proxy rules to development.** Your production server handles API routing directly — proxies are a dev convenience.
