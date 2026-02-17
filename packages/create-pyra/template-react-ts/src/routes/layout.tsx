@@ -1,17 +1,21 @@
 import React from 'react';
+import './style.css';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <nav style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', gap: '1rem' }}>
-        <a href="/">Home</a>
-        <a href="/about">About</a>
+    <div className="layout">
+      <nav className="nav">
+        <a href="/" className="nav-brand">{'{{PROJECT_NAME}}'}</a>
+        <div className="nav-links">
+          <a href="/">Home</a>
+          <a href="/about">About</a>
+        </div>
       </nav>
-      <main style={{ padding: '2rem' }}>
+      <main className="main">
         {children}
       </main>
-      <footer style={{ padding: '1rem', borderTop: '1px solid #eee', textAlign: 'center', color: '#999' }}>
-        {{PROJECT_NAME}} &mdash; built with Pyra.js
+      <footer className="footer">
+        Built with <a href="https://github.com/Simpleboi/Pyra">Pyra.js</a>
       </footer>
     </div>
   );
