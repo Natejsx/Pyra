@@ -18,12 +18,12 @@ import { formatFileTree } from "./tree.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// ── Version ──────────────────────────────────────────────────────────
+// Version
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
 const VERSION: string = pkg.version;
 
-// ── Types ────────────────────────────────────────────────────────────
+// Types
 type PMName = "npm" | "pnpm" | "yarn" | "bun";
 type Framework = "vanilla" | "react" | "preact";
 type AppMode = "ssr" | "spa";
@@ -36,7 +36,7 @@ interface CliArgs {
   skipInstall: boolean;
 }
 
-// ── Arg Parsing ──────────────────────────────────────────────────────
+// Arg Parsing
 function parseArgs(argv: string[]): CliArgs {
   const args = argv.slice(2);
   let projectName: string | undefined;
@@ -92,7 +92,7 @@ function printHelp(): void {
 `);
 }
 
-// ── PM Detection ─────────────────────────────────────────────────────
+// PM Detection
 const LOCKFILES: Record<PMName, string> = {
   pnpm: "pnpm-lock.yaml",
   yarn: "yarn.lock",
@@ -163,7 +163,7 @@ function spawnPM(
   });
 }
 
-// ── Validation ───────────────────────────────────────────────────────
+// Validation
 function validateProjectName(name: string): string | undefined {
   if (!name || name.trim().length === 0) return "Project name is required";
   if (!/^[a-z0-9-_]+$/i.test(name))
@@ -174,7 +174,7 @@ function validateProjectName(name: string): string | undefined {
   return undefined;
 }
 
-// ── Template Copying ─────────────────────────────────────────────────
+// Template Copying
 function copyTemplate(
   framework: Framework,
   appMode: AppMode,
@@ -223,7 +223,7 @@ function copyDir(
   }
 }
 
-// ── Tailwind Generators ──────────────────────────────────────────────
+// Tailwind Generators
 function generateTailwindConfig(framework: Framework): string {
   const contentPaths =
     framework === "vanilla"
@@ -460,7 +460,7 @@ function injectCSSImport(entryFilePath: string): void {
   writeFileSync(entryFilePath, 'import "./index.css";\n' + content, "utf-8");
 }
 
-// ── Display Labels ───────────────────────────────────────────────────
+// Display Labels
 const FRAMEWORK_LABELS: Record<Framework, string> = {
   vanilla: "Vanilla",
   react: "React",
@@ -483,7 +483,7 @@ const TAILWIND_LABELS: Record<TailwindPreset, string> = {
   shadcn: "shadcn",
 };
 
-// ── Cancellation Helper ──────────────────────────────────────────────
+// Cancellation Helper
 function onCancel(value: unknown): void {
   if (p.isCancel(value)) {
     p.cancel("Setup cancelled.");
@@ -491,7 +491,7 @@ function onCancel(value: unknown): void {
   }
 }
 
-// ── Main Wizard ──────────────────────────────────────────────────────
+// Main Wizard
 async function main(): Promise<void> {
   const {
     projectName: nameArg,
@@ -514,7 +514,7 @@ async function main(): Promise<void> {
 
   const next = (label: string) => stepLabel(++currentStep, totalSteps, label);
 
-  // ── Step 1: Project Name ───────────────────────────────────────────
+  // Step 1: Project Name
   let projectName: string;
 
   if (nameArg) {
@@ -545,7 +545,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // ── Step 2: Framework ──────────────────────────────────────────────
+  // Step 2: Framework
   const framework = (await p.select({
     message: next("Framework"),
     options: [
@@ -573,7 +573,7 @@ async function main(): Promise<void> {
     totalSteps = 5;
   }
 
-  // ── Step 3: Rendering Mode (React/Preact only) ────────────────────
+  // Step 3: Rendering Mode (React/Preact only)
   let appMode: AppMode = "spa";
 
   if (framework !== "vanilla") {
@@ -583,7 +583,7 @@ async function main(): Promise<void> {
         {
           value: "ssr" as AppMode,
           label: pc.green("SSR"),
-          hint: "server-side rendering",
+          hint: "Server-side rendering",
         },
         {
           value: "spa" as AppMode,
@@ -595,7 +595,7 @@ async function main(): Promise<void> {
     onCancel(appMode);
   }
 
-  // ── Step N: Variant ────────────────────────────────────────────────
+  // Step N: Variant
   const language = (await p.select({
     message: next("Variant"),
     options: [
@@ -613,7 +613,7 @@ async function main(): Promise<void> {
   })) as Language;
   onCancel(language);
 
-  // ── Step N: Tailwind ───────────────────────────────────────────────
+  // Step N: Tailwind
   const tailwind = (await p.select({
     message: next("Tailwind CSS"),
     options: [
@@ -632,7 +632,7 @@ async function main(): Promise<void> {
   })) as TailwindPreset;
   onCancel(tailwind);
 
-  // ── Step N: Package Manager ────────────────────────────────────────
+  // Step N: Package Manager
   let chosenPM: PMName;
 
   if (pmOverride) {
@@ -654,7 +654,7 @@ async function main(): Promise<void> {
     onCancel(chosenPM);
   }
 
-  // ── Summary ────────────────────────────────────────────────────────
+  // Summary
   const summaryLines = [
     summaryRow("Project", projectName),
     summaryRow("Framework", FRAMEWORK_LABELS[framework]),
@@ -668,7 +668,7 @@ async function main(): Promise<void> {
 
   p.note(summaryLines.join("\n"), "Summary");
 
-  // ── Confirm ────────────────────────────────────────────────────────
+  // Confirm
   const confirmed = await p.confirm({
     message: "Create project?",
   });
@@ -679,7 +679,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // ── Scaffold ───────────────────────────────────────────────────────
+  // Scaffold
   const spin = p.spinner();
   spin.start("Scaffolding project...");
 
@@ -705,10 +705,10 @@ async function main(): Promise<void> {
 
   spin.stop(S.success("Project scaffolded"));
 
-  // ── File Tree ──────────────────────────────────────────────────────
+  // File Tree
   p.note(formatFileTree(allFiles), "Project structure");
 
-  // ── Install Dependencies ───────────────────────────────────────────
+  // Install Dependencies
   if (!skipInstall) {
     spin.start(`Installing dependencies with ${S.bold(chosenPM)}...`);
 
@@ -723,7 +723,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── Outro ──────────────────────────────────────────────────────────
+  // Outro
   const nextSteps = [
     `cd ${S.accent(projectName)}`,
     ...(skipInstall ? [`${S.accent(chosenPM)} install`] : []),
@@ -735,7 +735,7 @@ async function main(): Promise<void> {
   );
 }
 
-// ── Entry Point ──────────────────────────────────────────────────────
+// Entry Point
 main().catch((err) => {
   if (err.name === "ExitPromptError") {
     console.log();
