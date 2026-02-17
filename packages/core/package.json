@@ -17,6 +17,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "test": "vitest run --config vitest.config.ts",
     "build": "tsup src/index.ts --dts --format esm --out-dir dist",
     "dev": "tsup src/index.ts --dts --format esm --out-dir dist --watch",
     "prepublishOnly": "pnpm build"

@@ -17,7 +17,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run --config vitest.config.ts",
     "build": "tsup src/index.ts --dts --format esm --out-dir dist",
     "prepublishOnly": "pnpm build"
   },
