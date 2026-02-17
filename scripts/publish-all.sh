@@ -11,35 +11,35 @@ echo ""
 # 1. pyrajs-shared (no internal deps)
 echo "📦 Publishing pyrajs-shared..."
 cd ../packages/shared
-npm publish
+pnpm publish --access public --no-git-checks
 echo "✅ pyrajs-shared published"
 echo ""
 
 # 2. pyrajs-core (depends on shared)
 echo "📦 Publishing pyrajs-core..."
 cd ../core
-npm publish
+pnpm publish --access public --no-git-checks
 echo "✅ pyrajs-core published"
 echo ""
 
 # 3. pyrajs-adapter-react (depends on shared)
 echo "📦 Publishing pyrajs-adapter-react..."
 cd ../adapter-react
-npm publish
+pnpm publish --access public --no-git-checks
 echo "✅ pyrajs-adapter-react published"
 echo ""
 
 # 4. pyrajs-cli (depends on shared, core, adapter-react)
 echo "📦 Publishing pyrajs-cli..."
 cd ../cli
-npm publish
+pnpm publish --access public --no-git-checks
 echo "✅ pyrajs-cli published"
 echo ""
 
 # 5. create-pyra (standalone)
 echo "📦 Publishing create-pyra..."
 cd ../create-pyra
-npm publish
+pnpm publish --access public --no-git-checks
 echo "✅ create-pyra published"
 echo ""
 
