@@ -23,6 +23,8 @@
   ],
   "scripts": {
     "build": "tsup",
+    "dev:link": "pnpm build && pnpm link --global",
+    "dev:unlink": "pnpm unlink --global create-pyra",
     "prepublishOnly": "pnpm build",
     "testing-wd": "cd ../../ && pnpm run dev:link && cd packages/create-pyra && node dist/index.js"
   },
