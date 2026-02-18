@@ -70,7 +70,7 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
   const silent = options.silent ?? false;
 
   // Entry-based SPA: no file-based routing — produce a static dist/ like Vite
-  if (options.config.entry) {
+  if (typeof options.config.entry === 'string') {
     return buildSPA(options);
   }
 
@@ -588,7 +588,7 @@ async function buildSPA(options: BuildOrchestratorOptions): Promise<BuildResult>
 
   const root = options.root || options.config.root || process.cwd();
   const outDir = path.resolve(root, options.outDir || getOutDir(options.config) || 'dist');
-  const entry = path.resolve(root, options.config.entry!);
+  const entry = path.resolve(root, options.config.entry as string);
   const base = options.config.build?.base || '/';
   const minify = options.minify ?? options.config.build?.minify ?? true;
   const sourcemap = options.sourcemap ?? options.config.build?.sourcemap ?? false;
