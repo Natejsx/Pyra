@@ -11,6 +11,7 @@ import { resolveRouteRenderMode } from "./render-mode.js";
 import { HTTP_METHODS } from "pyrajs-shared";
 import { runMiddleware } from "./middleware.js";
 import { bundleFile, invalidateDependentCache } from "./bundler.js";
+import { runPostCSS } from "./css-plugin.js";
 import { metricsStore } from "./metrics.js";
 import { scanRoutes } from "./scanner.js";
 import { createRouter } from "./router.js";
@@ -306,6 +307,15 @@ export class DevServer {
       let content = fs.readFileSync(filePath, "utf-8");
       const ext = path.extname(filePath);
       tracer.end();
+
+      // Process CSS files through PostCSS (e.g. Tailwind directives).
+      if (ext === ".css") {
+        content = await this.processCSS(filePath, content);
+        res.writeHead(200, { "Content-Type": "text/css", "Cache-Control": "no-cache" });
+        res.end(content);
+        if (this.verbose) console.log(tracer.toDetailedLog(200));
+        return;
+      }
 
       // Bundle and transform TypeScript/JSX files with module resolution
       if (/\.(tsx?|jsx?|mjs)$/.test(ext)) {
@@ -1204,6 +1214,15 @@ export class DevServer {
   }
 
   // ── Utilities ───────────────────────────────────────────────────────────────
+
+  /**
+   * Run a CSS file's content through PostCSS if a postcss.config.* exists in
+   * the project root. Falls back to the raw source when PostCSS is not
+   * configured or not installed in the user's project.
+   */
+  private async processCSS(filePath: string, source: string): Promise<string> {
+    return runPostCSS(this.root, source, filePath);
+  }
 
   private getContentType(ext: string): string {
     const types: Record<string, string> = {

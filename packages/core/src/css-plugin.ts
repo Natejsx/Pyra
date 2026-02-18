@@ -17,6 +17,29 @@ export function hasPostCSSConfig(root: string): boolean {
   return CONFIG_FILES.some(f => fs.existsSync(path.join(root, f)));
 }
 
+// Cache per root so repeated calls (e.g. from the dev-server static handler)
+// don't re-load PostCSS and its plugins on every request.
+const postcssCache = new Map<string, { postcss: any; plugins: any[] } | null>();
+
+/**
+ * Run a CSS string through PostCSS using the config in `root`.
+ * Returns the processed CSS, or the original source if PostCSS is not
+ * configured / not installed.
+ */
+export async function runPostCSS(root: string, source: string, from: string): Promise<string> {
+  if (!postcssCache.has(root)) {
+    postcssCache.set(root, await loadPostCSS(root));
+  }
+  const config = postcssCache.get(root);
+  if (!config) return source;
+  try {
+    const result = await config.postcss(config.plugins).process(source, { from });
+    return result.css;
+  } catch {
+    return source;
+  }
+}
+
 /**
  * Returns an esbuild plugin that processes CSS files through PostCSS.
  *
