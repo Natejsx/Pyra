@@ -156,8 +156,10 @@ function spawnPM(
   quiet = false,
 ): Promise<void> {
   return new Promise((res, reject) => {
-    const cmd = process.platform === "win32" ? `${pm}.cmd` : pm;
-    const child = spawn(cmd, args, {
+    const isWin = process.platform === "win32";
+    const cmd = isWin ? "cmd.exe" : pm;
+    const cmdArgs = isWin ? ["/c", pm, ...args] : args;
+    const child = spawn(cmd, cmdArgs, {
       cwd,
       stdio: quiet ? "pipe" : "inherit",
       shell: false,
