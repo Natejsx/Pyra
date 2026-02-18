@@ -128,7 +128,7 @@ async function commandExists(cmd: string): Promise<boolean> {
     const child = spawn(
       process.platform === "win32" ? "where" : "which",
       [cmd],
-      { stdio: "ignore", shell: true },
+      { stdio: "ignore", shell: false },
     );
     child.on("close", (code) => res(code === 0));
     child.on("error", () => res(false));
@@ -156,10 +156,11 @@ function spawnPM(
   quiet = false,
 ): Promise<void> {
   return new Promise((res, reject) => {
-    const child = spawn(pm, args, {
+    const cmd = process.platform === "win32" ? `${pm}.cmd` : pm;
+    const child = spawn(cmd, args, {
       cwd,
       stdio: quiet ? "pipe" : "inherit",
-      shell: true,
+      shell: false,
     });
     child.on("close", (code) =>
       code === 0
