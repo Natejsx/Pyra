@@ -2,11 +2,24 @@ import * as esbuild from 'esbuild';
 import { log } from 'pyrajs-shared';
 import path from 'node:path';
 import { metricsStore } from './metrics.js';
+import { createPostCSSPlugin } from './css-plugin.js';
 
 /**
  * In-memory cache for bundled modules
  */
 const bundleCache = new Map<string, { code: string; timestamp: number }>();
+
+/**
+ * One PostCSS plugin instance per project root (created lazily on first use).
+ */
+const postcssPluginCache = new Map<string, esbuild.Plugin>();
+
+function getPostCSSPlugin(root: string): esbuild.Plugin {
+  if (!postcssPluginCache.has(root)) {
+    postcssPluginCache.set(root, createPostCSSPlugin(root));
+  }
+  return postcssPluginCache.get(root)!;
+}
 
 /**
  * Cache duration in milliseconds (5 seconds)
@@ -46,6 +59,7 @@ export async function bundleFile(
       target: 'es2020',
       platform: 'browser',
       sourcemap: 'inline',
+      plugins: [getPostCSSPlugin(root)],
       loader: {
         '.ts': 'ts',
         '.tsx': 'tsx',
@@ -57,8 +71,6 @@ export async function bundleFile(
       absWorkingDir: root,
       // Need outdir even with write:false so esbuild knows how to structure CSS output
       outdir: 'dist',
-      // External packages can be configured here if needed
-      // external: [],
     });
 
     if (result.outputFiles && result.outputFiles.length > 0) {

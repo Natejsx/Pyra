@@ -20,6 +20,7 @@ import {
   getOutDir,
 } from 'pyrajs-shared';
 import { resolveRouteRenderMode } from './render-mode.js';
+import { createPostCSSPlugin } from './css-plugin.js';
 import pc from 'picocolors';
 import { scanRoutes, type ScanResult, type ScannedLayout, type ScannedMiddleware, type ScannedError } from './scanner.js';
 import { createRouter } from './router.js';
@@ -171,7 +172,7 @@ export async function build(options: BuildOrchestratorOptions): Promise<BuildRes
     assetNames: '[name]-[hash]',
     jsx: 'automatic',
     jsxImportSource: 'react',
-    plugins: [...adapter.esbuildPlugins()],
+    plugins: [createPostCSSPlugin(root), ...adapter.esbuildPlugins()],
     absWorkingDir: root,
     logLevel: 'silent',
     loader: {
