@@ -5,10 +5,36 @@ All notable changes to Pyra.js are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-02-18
+
+### Added
+- PostCSS integration in core - Tailwind CSS now works in both dev and production builds
+  - `css-plugin.ts` - esbuild plugin that loads PostCSS dynamically from the user's project (no new dependency in `pyrajs-core`)
+  - PostCSS config auto-detected (`postcss.config.js` / `.cjs` / `.mjs`) with support for both object and array plugin formats
+  - CSS through esbuild bundler (imported from JS modules) processed via `createPostCSSPlugin()`
+  - CSS served directly as static files in dev server processed via `runPostCSS()`
+  - PostCSS config cached per project root to avoid re-loading on every request
+- `dev:link` and `dev:unlink` scripts to `create-pyra/package.json` for easy local testing.
+
+- CLI templates directory (`packages/cli/templates/`) with all four template variants:
+  - `react-ts-fullstack/` - TypeScript fullstack SSR template with layout, page, about page, health API route
+  - `react-js-fullstack/` - JavaScript fullstack SSR template (same structure, no TypeScript)
+  - `vanilla-ts/` - Minimal vanilla TypeScript SPA template
+  - `vanilla-js/` - Minimal vanilla JavaScript SPA template
+
+### Changed
+- Tailwind prompt in `create-pyra` wizard simplified from a 3-option select (none / basic / shadcn) to a yes/no confirm
+  - Removed shadcn preset - shadcn setup requires manual steps beyond CSS config
+  - Removed `TailwindPreset` type and `generateShadcnTailwindConfig()` helper
+  - Summary row now shows "Yes" / "No" instead of preset name
+
+### Fixed
+- `dev:link` in `create-pyra` now uses `npm link` instead of `pnpm link --global` - avoids `ERR_PNPM_NO_GLOBAL_BIN_DIR` error when pnpm global bin dir is not configured
+
 ## [0.12.2] - 2026-02-16
 
 ### Changed
-- Updated all template CSS to use Pyra brand colors (`#e63946` / `#f4845f`) — replaces old purple/blue and cyan/blue gradients
+- Updated all template CSS to use Pyra brand colors (`#e63946` / `#f4845f`) - replaces old purple/blue and cyan/blue gradients
 - Added polished CSS to all fullstack SSR templates (nav bar, hero section, feature cards, footer)
 
 ## [0.12.1] - 2025-02-16
@@ -28,8 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated architecture documentation
 
 ### Added
-- `theme.ts` in `create-pyra` — color palette constants and styled progress indicators
-- `tree.ts` in `create-pyra` — file tree formatter for post-scaffold output
+- `theme.ts` in `create-pyra` - color palette constants and styled progress indicators
+- `tree.ts` in `create-pyra` - file tree formatter for post-scaffold output
 
 ### Fixed
 - Corrected prompt flow issue after migrating to clack
@@ -39,11 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Render mode system (`ssr`, `spa`, `ssg`) configurable globally or per-route
-- `render-mode.ts` in core — resolves per-route render mode from exports vs global config
+- `render-mode.ts` in core - resolves per-route render mode from exports vs global config
 - Render mode branching in build pipeline with SPA fallback support
 - Render mode branching in production server
 - Rendering mode prompt in `create-pyra` wizard
-- Preact framework support — `preact-ts`, `preact-js`, `preact-spa-ts`, `preact-spa-js` templates
+- Preact framework support - `preact-ts`, `preact-js`, `preact-spa-ts`, `preact-spa-js` templates
 - Project templates for `create-pyra`: `react-ts`, `react-js`, `vanilla-ts`, `vanilla-js`
 
 ### Changed
@@ -72,7 +98,7 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 
 ### Added
 
-- `create-pyra` standalone package — interactive project scaffolding via `npm create pyra`
+- `create-pyra` standalone package - interactive project scaffolding via `npm create pyra`
 - GitHub Actions CI workflows
 - Publish script for package releases
 - Base `tsconfig.json` at project root with project references
@@ -90,14 +116,14 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 
 - Error boundary types (`ErrorPageProps`, `ErrorModule`)
 - `error.tsx` and `404.tsx` route file conventions
-- Error handling in dev server — renders nearest error boundary with full stack traces
-- Error handling in build pipeline — 404 entries included in production builds
-- Error handling in prod server — generic error pages (no stack traces in production)
+- Error handling in dev server - renders nearest error boundary with full stack traces
+- Error handling in build pipeline - 404 entries included in production builds
+- Error handling in prod server - generic error pages (no stack traces in production)
 - Route collision detection in scanner
 - Graceful shutdown with `inflightCount` tracking and 10-second drain timeout
 
 ### Changed
-- Improved terminal styling — Pyra text in red via chalk, cleaner default action display
+- Improved terminal styling - Pyra text in red via chalk, cleaner default action display
 - Dynamic versioning for CLI template dependencies
 
 ### Fixed
@@ -107,14 +133,14 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 
 ### Added
 
-- `RequestTracer` class — per-request timing via `performance.now()` with `start()`/`end()` stage pairs
-- `MetricsStore` singleton — ring buffer for traces (200), build metrics (50), HMR events (100)
+- `RequestTracer` class - per-request timing via `performance.now()` with `start()`/`end()` stage pairs
+- `MetricsStore` singleton - ring buffer for traces (200), build metrics (50), HMR events (100)
 - `Server-Timing` header output (W3C format for Chrome DevTools)
 - Tree-style terminal trace logs with bottleneck highlighting (yellow >50%, red >80%)
 - Request tracing in dev server pipeline
 - Conditional request tracing in production server (`trace.production`: `'off'` | `'header'` | `'on'`)
 - Gzip size estimates in build manifest
-- `routeStats()` — per-route avg/p50/p95/p99 response time aggregation
+- `routeStats()` - per-route avg/p50/p95/p99 response time aggregation
 - Trace API endpoints: `/_pyra/api/traces`, `/_pyra/api/traces/stats`, `/_pyra/api/traces/:id`
 - `contributing.md`
 
@@ -123,7 +149,7 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 ### Added
 
 - Production server banner with timing and capability display
-- Middleware and layout support in SSR pipeline — layouts nest outermost-to-innermost
+- Middleware and layout support in SSR pipeline - layouts nest outermost-to-innermost
 - Middleware runner with `next()` continuation pattern
 
 ### Changed
@@ -156,12 +182,12 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 
 ### Added
 
-- `pyra doctor` command — project diagnostics (SSR vs SPA mode detection, config validation, route scanning)
+- `pyra doctor` command - project diagnostics (SSR vs SPA mode detection, config validation, route scanning)
 - Dev server keyboard shortcuts (`r` restart, `o` open browser, `c` clear, `q` quit, `h` help)
-- Dev banner — Vite-inspired startup display with route counts, SSR status, URLs
-- `net-utils.ts` — port finding, URL resolution, config helpers
+- Dev banner - Vite-inspired startup display with route counts, SSR status, URLs
+- `net-utils.ts` - port finding, URL resolution, config helpers
 - Reporter utility with `withBanner()` wrapper and silent mode support
-- Auto port detection — finds next available port if configured port is in use
+- Auto port detection - finds next available port if configured port is in use
 - Terminal art for `pyra` default command
 
 ### Fixed
@@ -189,10 +215,10 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 
 ### Added
 
-- File-system route scanner (`scanner.ts`) — discovers `page.tsx`, `route.ts`, `layout.tsx`, `middleware.ts`
+- File-system route scanner (`scanner.ts`) - discovers `page.tsx`, `route.ts`, `layout.tsx`, `middleware.ts`
 - Trie-based URL router (`router.ts`) with priority: static > dynamic > catch-all
 - React SSR adapter (`pyrajs-adapter-react`) implementing `PyraAdapter` interface
-- `RequestContext` — Web standard `Request`, `CookieJar`, env vars, response helpers
+- `RequestContext` - Web standard `Request`, `CookieJar`, env vars, response helpers
 - Route-aware SSR in dev server via adapter pattern
 - `PyraAdapter` interface for framework-agnostic rendering
 - Route groups `(name)`, dynamic segments `[slug]` support
@@ -203,7 +229,7 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 
 ### Added
 
-- Dependency graph visualization (`pyra graph`) — HTML, SVG, PNG, mermaid, dot, JSON formats
+- Dependency graph visualization (`pyra graph`) - HTML, SVG, PNG, mermaid, dot, JSON formats
 - Performance banners in `init` and `create` commands
 
 ### Fixed
@@ -217,10 +243,10 @@ create-pyra` templates to account for SSR/SPA/SSG rendering modes
 ### Added
 
 - Monorepo setup with pnpm workspaces (shared, core, cli packages)
-- `pyra dev` — development server with HMR via WebSocket
-- `pyra build` — production build via esbuild
-- `pyra init` — project scaffolding with template selection
-- Config loader — auto-discovers `pyra.config.ts` / `.js` / `.mjs` / `.cjs` / `.pyrarc.*`
+- `pyra dev` - development server with HMR via WebSocket
+- `pyra build` - production build via esbuild
+- `pyra init` - project scaffolding with template selection
+- Config loader - auto-discovers `pyra.config.ts` / `.js` / `.mjs` / `.cjs` / `.pyrarc.*`
 - Package manager detection (npm, pnpm, yarn, bun)
 - Project templates for scaffolding
 - Colored terminal output via picocolors
