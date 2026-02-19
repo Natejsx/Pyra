@@ -71,6 +71,8 @@ export class DevServer {
   // v1.0: Error boundary files and 404 page
   private errorFiles: Map<string, string> = new Map();
   private notFoundPage: string | undefined;
+  // v1.1: Image optimization cache (key: `path|width|format|quality`)
+  private imageCache: Map<string, { buffer: Buffer; format: ImageFormat; expiresAt: number }> = new Map();
 
   constructor(options: DevServerOptions = {}) {
     this.port = options.port || options.config?.port || 3000;
@@ -173,7 +175,16 @@ export class DevServer {
         return;
       }
 
-      // Serve client-side module for hydration 
+      // Image optimization endpoint — only active when pyraImages plugin is configured
+      if (cleanUrl === "/_pyra/image") {
+        const hasImagePlugin = this.config?.plugins?.some((p) => p.name === "pyra:images");
+        if (hasImagePlugin) {
+          await this.handleImageRequest(req, res, url);
+          return;
+        }
+      }
+
+      // Serve client-side module for hydration
       if (cleanUrl.startsWith("/__pyra/modules/")) {
         const modulePath = cleanUrl.slice("/__pyra/modules/".length);
         const absolutePath = path.resolve(this.root, modulePath);
@@ -1224,6 +1235,90 @@ export class DevServer {
    */
   private async processCSS(filePath: string, source: string): Promise<string> {
     return runPostCSS(this.root, source, filePath);
+  }
+
+  /** On-demand image optimization endpoint for development mode. */
+  private async handleImageRequest(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rawUrl: string,
+  ): Promise<void> {
+    const params = new URLSearchParams(rawUrl.split("?")[1] ?? "");
+    const src = params.get("src") ?? "";
+    const w = parseInt(params.get("w") ?? "0", 10) || undefined;
+    const format = (params.get("format") ?? "webp") as ImageFormat;
+    const q = parseInt(params.get("q") ?? "80", 10) || 80;
+
+    const ALLOWED_FORMATS: ImageFormat[] = ["webp", "avif", "jpeg", "png"];
+    if (!ALLOWED_FORMATS.includes(format)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unsupported format" }));
+      return;
+    }
+
+    // Security: reject path traversal or absolute paths
+    if (!src.startsWith("/") || src.includes("..") || path.isAbsolute(src.slice(1))) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid src" }));
+      return;
+    }
+
+    // Check sharp availability
+    if (!(await isSharpAvailable())) {
+      res.writeHead(501, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "Image optimization unavailable: sharp is not installed. Run: npm install sharp",
+        })
+      );
+      return;
+    }
+
+    // Resolve file path: try public/{src} first, then root/{src}
+    const publicDir = this.config?.build?.publicDir ?? "public";
+    const publicPath = path.join(this.root, publicDir, src);
+    const rootPath = path.join(this.root, src);
+    const resolvedPath = fs.existsSync(publicPath) ? publicPath : rootPath;
+
+    if (!fs.existsSync(resolvedPath)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Image not found" }));
+      return;
+    }
+
+    const cacheKey = `${resolvedPath}|${w ?? ""}|${format}|${q}`;
+    const now = Date.now();
+    const cached = this.imageCache.get(cacheKey);
+
+    let buffer: Buffer;
+    let outFormat: ImageFormat;
+
+    if (cached && cached.expiresAt > now) {
+      buffer = cached.buffer;
+      outFormat = cached.format;
+    } else {
+      try {
+        const result = await optimizeImage(resolvedPath, { width: w, format, quality: q });
+        buffer = result.buffer;
+        outFormat = result.format;
+        this.imageCache.set(cacheKey, {
+          buffer,
+          format: outFormat,
+          expiresAt: now + 60_000, // 60 second TTL
+        });
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+        return;
+      }
+    }
+
+    res.writeHead(200, {
+      "Content-Type": `image/${outFormat}`,
+      "Content-Length": buffer.length,
+      "Cache-Control": "public, max-age=60",
+    });
+    res.end(buffer);
   }
 
   private getContentType(ext: string): string {
