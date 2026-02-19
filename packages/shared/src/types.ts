@@ -668,6 +668,9 @@ export interface RouteManifest {
 
   /** Path to the SPA fallback HTML (relative to dist/client/), if any SPA routes exist. */
   spaFallback?: string;
+
+  /** Optimized image manifest produced by the pyraImages() plugin, if active. */
+  images?: Record<string, ImageManifestEntry>;
 }
 
 export interface ManifestRouteEntry {
