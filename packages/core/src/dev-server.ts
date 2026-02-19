@@ -1337,6 +1337,35 @@ export class DevServer {
     res.end(buffer);
   }
 
+  /**
+   * Resolve a URL path to a file inside the configured public/ directory.
+   * Returns the absolute file path if it exists, null otherwise.
+   */
+  private resolvePublicFilePath(urlPath: string): string | null {
+    const publicDir = this.config?.build?.publicDir ?? "public";
+    const candidate = path.join(this.root, publicDir, urlPath);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+    return null;
+  }
+
+  /**
+   * Serve a file from the public/ directory.
+   * Reads as a Buffer so binary files (images, fonts, etc.) are handled correctly.
+   */
+  private servePublicFile(res: http.ServerResponse, filePath: string): void {
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = this.getContentType(ext);
+    const content = fs.readFileSync(filePath);
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": content.length,
+      "Cache-Control": "public, max-age=3600",
+    });
+    res.end(content);
+  }
+
   private getContentType(ext: string): string {
     const types: Record<string, string> = {
       ".html": "text/html",
