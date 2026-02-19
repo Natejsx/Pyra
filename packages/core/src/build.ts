@@ -72,6 +72,21 @@ export async function build(
     return buildSPA(options);
   }
 
+  // ── Plugin: config() hooks ─────────────────────────────────────────────
+  const plugins = options.config.plugins ?? [];
+  let resolvedConfig = options.config;
+  for (const plugin of plugins) {
+    resolvedConfig = (await plugin.config?.(resolvedConfig, "production")) ?? resolvedConfig;
+  }
+  // Propagate plugin setup (mode + config access)
+  for (const plugin of plugins) {
+    await plugin.setup?.({
+      addEsbuildPlugin: () => {},
+      getConfig: () => resolvedConfig,
+      getMode: () => "production",
+    });
+  }
+
   const clientOutDir = path.join(outDir, "client", "assets");
   const serverOutDir = path.join(outDir, "server");
 
@@ -83,6 +98,11 @@ export async function build(
   }
   fs.mkdirSync(clientOutDir, { recursive: true });
   fs.mkdirSync(serverOutDir, { recursive: true });
+
+  // ── Plugin: buildStart() hooks ─────────────────────────────────────────
+  for (const plugin of plugins) {
+    await plugin.buildStart?.();
+  }
 
   // Scan routes
   const scanResult = await scanRoutes(routesDir, [...adapter.fileExtensions]);
@@ -597,7 +617,12 @@ export async function build(
     }
   }
 
-  // Write manifest (after prerender updates)
+  // ── Plugin: buildEnd() hooks — mutate manifest before writing ────────────
+  for (const plugin of plugins) {
+    await plugin.buildEnd?.({ manifest, outDir, root });
+  }
+
+  // Write manifest (after prerender updates and plugin mutations)
   const manifestPath = path.join(outDir, "manifest.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 
