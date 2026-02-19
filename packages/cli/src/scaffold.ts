@@ -26,13 +26,13 @@ export interface ScaffoldOptions {
 }
 
 /**
- * Get the template directory name based on template and language
- * React templates use the full-stack variant with file-based routing
+ * Get the template directory name based on template, language, and app mode.
+ * React defaults to fullstack (SSR) when no mode is specified.
  */
-function getTemplateName(template: Template, language: Language): string {
+function getTemplateName(template: Template, language: Language, appMode: AppMode = 'ssr'): string {
   const langSuffix = language === 'typescript' ? 'ts' : 'js';
   if (template === 'react') {
-    return `react-${langSuffix}-fullstack`;
+    return appMode === 'spa' ? `react-${langSuffix}-spa` : `react-${langSuffix}-fullstack`;
   }
   return `${template}-${langSuffix}`;
 }
@@ -144,6 +144,7 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
     projectName,
     template,
     language,
+    appMode = 'ssr',
     targetDir,
     tailwind = false,
     tailwindPreset = 'basic',
@@ -169,7 +170,7 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
   }
 
   // Get template directory
-  const templateName = getTemplateName(template, language);
+  const templateName = getTemplateName(template, language, appMode);
   const templateDir = path.join(__dirname, '../templates', templateName);
 
   // Check if template exists

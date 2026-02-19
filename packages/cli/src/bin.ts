@@ -11,7 +11,7 @@ import {
 import { DevServer, build, ProdServer } from "pyrajs-core";
 import { createReactAdapter } from "pyrajs-adapter-react";
 import { select, confirm } from "@inquirer/prompts";
-import { scaffold, validateProjectName, type Template, type Language } from "./scaffold.js";
+import { scaffold, validateProjectName, type Template, type Language, type AppMode } from "./scaffold.js";
 import {
   startTimer,
   printBanner,
