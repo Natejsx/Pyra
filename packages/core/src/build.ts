@@ -617,6 +617,14 @@ export async function build(
     }
   }
 
+  // ── Copy public/ directory to dist/client/ ────────────────────────────────
+  const publicDirName = resolvedConfig.build?.publicDir ?? "public";
+  const publicDirPath = path.resolve(root, publicDirName);
+  if (fs.existsSync(publicDirPath)) {
+    fs.cpSync(publicDirPath, path.join(outDir, "client"), { recursive: true });
+    log.info(`Copied ${publicDirName}/ → dist/client/`);
+  }
+
   // ── Plugin: buildEnd() hooks — mutate manifest before writing ────────────
   for (const plugin of plugins) {
     await plugin.buildEnd?.({ manifest, outDir, root });
