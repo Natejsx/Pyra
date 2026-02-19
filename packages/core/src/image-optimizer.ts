@@ -22,28 +22,38 @@ export interface OptimizeResult {
   size: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SharpModule = any;
+
 let _sharpAvailable: boolean | null = null;
+let _sharp: SharpModule | null = null;
+
+async function getSharp(): Promise<SharpModule | null> {
+  if (_sharpAvailable !== null) return _sharp;
+  try {
+    _sharp = await import("sharp" as string);
+    _sharpAvailable = true;
+  } catch {
+    _sharpAvailable = false;
+    _sharp = null;
+  }
+  return _sharp;
+}
 
 /**
  * Check whether sharp is installed and importable.
  * Result is cached after the first call.
  */
 export async function isSharpAvailable(): Promise<boolean> {
-  if (_sharpAvailable !== null) return _sharpAvailable;
-  try {
-    await import("sharp");
-    _sharpAvailable = true;
-  } catch {
-    _sharpAvailable = false;
-  }
-  return _sharpAvailable;
+  await getSharp();
+  return _sharpAvailable === true;
 }
 
 /**
  * Read image dimensions and format without a full decode.
  */
 export async function getImageMetadata(inputPath: string): Promise<ImageMetadata> {
-  const sharp = await import("sharp").catch(() => null);
+  const sharp = await getSharp();
   if (!sharp) {
     throw new Error(
       "[pyra:images] sharp is required for image optimization. Run: npm install sharp"
@@ -66,7 +76,7 @@ export async function optimizeImage(
   inputPath: string,
   options: OptimizeOptions
 ): Promise<OptimizeResult> {
-  const sharp = await import("sharp").catch(() => null);
+  const sharp = await getSharp();
   if (!sharp) {
     throw new Error(
       "[pyra:images] sharp is required for image optimization. Run: npm install sharp"
@@ -105,7 +115,7 @@ export async function optimizeImage(
       break;
   }
 
-  const buffer = await pipeline.toBuffer({ resolveWithObject: false }) as Buffer;
+  const buffer = (await pipeline.toBuffer({ resolveWithObject: false })) as Buffer;
   const meta = await sharp.default(buffer).metadata();
 
   return {
