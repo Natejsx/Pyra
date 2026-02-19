@@ -204,6 +204,15 @@ export class DevServer {
         return;
       }
 
+      // Serve static files from public/ before route matching.
+      // This ensures /favicon.ico, /robots.txt, /images/*, etc. are served
+      // directly without hitting the router.
+      const publicFilePath = this.resolvePublicFilePath(cleanUrl);
+      if (publicFilePath) {
+        this.servePublicFile(res, publicFilePath);
+        return;
+      }
+
       // Route-aware SSR pipeline
       if (this.adapter && this.router) {
         // v0.9: Trace route matching
@@ -286,11 +295,18 @@ export class DevServer {
         cleanUrl === "/" ? "/index.html" : cleanUrl,
       );
 
-      // Check if file exists
+      // Check if file exists — also look in public/ as a fallback
       if (!fs.existsSync(filePath)) {
         if (fs.existsSync(filePath + ".html")) {
           filePath = filePath + ".html";
         } else {
+          // Try public/ directory before giving up
+          const publicFilePath = this.resolvePublicFilePath(cleanUrl);
+          if (publicFilePath) {
+            tracer.end();
+            this.servePublicFile(res, publicFilePath);
+            return;
+          }
           tracer.end();
           const trace = tracer.finalize(404);
           metricsStore.recordTrace(trace);
