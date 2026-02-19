@@ -522,6 +522,9 @@ program
         }
 
         log.info("  pnpm dev");
+        if (template === "react" && appMode === "ssr") {
+          log.info("  pnpm build && pnpm start  (production)");
+        }
         log.info("");
 
         printDone({ verb: "completed", elapsedMs: stop(), silent, color });
