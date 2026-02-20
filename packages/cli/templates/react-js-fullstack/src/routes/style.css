@@ -1,3 +1,4 @@
+/* ── Reset ──────────────────────────────────────────────────────────────────── */
 *,
 *::before,
 *::after {
@@ -6,181 +7,273 @@
   box-sizing: border-box;
 }
 
+/* ── Pyra Design Tokens ─────────────────────────────────────────────────────── */
+:root {
+  --pyra-red: #e63946;
+  --pyra-orange: #f4845f;
+  --pyra-dark: #0f0f1a;
+  --pyra-navy: #1a1a2e;
+  --bg: #f8f8fc;
+  --surface: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #fafafa;
-  color: #1a1a2e;
+  background: var(--bg);
+  color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Layout ─────────────────────────────────────────────────────────────────── */
 .layout {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
+/* ── Navigation ─────────────────────────────────────────────────────────────── */
 .nav {
-  background: #1a1a2e;
+  background: var(--pyra-dark);
   padding: 0 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 3.5rem;
+  height: 3.75rem;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 100;
+  border-bottom: 1px solid rgba(230, 57, 70, 0.2);
+  box-shadow: 0 1px 0 rgba(230, 57, 70, 0.1), 0 4px 24px rgba(0, 0, 0, 0.35);
 }
 
 .nav-brand {
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: #e63946;
+  font-weight: 800;
+  font-size: 1.15rem;
+  background: linear-gradient(135deg, var(--pyra-red), var(--pyra-orange));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   text-decoration: none;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .nav-links {
   display: flex;
-  gap: 1.5rem;
+  gap: 0.25rem;
 }
 
 .nav-links a {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.55);
   text-decoration: none;
   font-size: 0.9rem;
-  transition: color 0.2s;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.375rem;
+  transition: color 0.15s, background 0.15s;
 }
 
 .nav-links a:hover {
   color: #fff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
+/* ── Main Content ───────────────────────────────────────────────────────────── */
 .main {
   flex: 1;
   padding: 3rem 2rem;
-  max-width: 48rem;
+  max-width: 52rem;
   margin: 0 auto;
   width: 100%;
 }
 
+/* ── Hero ───────────────────────────────────────────────────────────────────── */
 .hero {
   text-align: center;
-  padding: 4rem 0 3rem;
+  padding: 5rem 0 4rem;
+  position: relative;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 55% at 50% 0%, rgba(230, 57, 70, 0.09) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .hero-badge {
-  display: inline-block;
-  background: linear-gradient(135deg, #e63946, #f4845f);
-  color: white;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.3rem 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(230, 57, 70, 0.08);
+  color: var(--pyra-red);
+  border: 1px solid rgba(230, 57, 70, 0.22);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.3rem 0.9rem;
   border-radius: 999px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 1.5rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 1.75rem;
 }
 
 .hero h1 {
-  font-size: 2.75rem;
+  font-size: 3.25rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #e63946 0%, #f4845f 100%);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  margin-bottom: 1.25rem;
+  background: linear-gradient(135deg, var(--pyra-red) 0%, var(--pyra-orange) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .hero p {
-  color: #6c757d;
-  font-size: 1.15rem;
-  max-width: 32rem;
-  margin: 0 auto 2rem;
+  color: var(--muted);
+  font-size: 1.1rem;
+  max-width: 30rem;
+  margin: 0 auto 2.5rem;
+  line-height: 1.75;
 }
 
+/* ── Code ───────────────────────────────────────────────────────────────────── */
 code {
-  background: #f0f0f5;
-  color: #e63946;
-  padding: 0.15rem 0.4rem;
-  border-radius: 0.25rem;
+  background: rgba(230, 57, 70, 0.06);
+  color: var(--pyra-red);
+  border: 1px solid rgba(230, 57, 70, 0.15);
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.3rem;
   font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Consolas', monospace;
-  font-size: 0.875em;
+  font-size: 0.85em;
 }
 
+/* ── Feature Cards ──────────────────────────────────────────────────────────── */
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: 1.25rem;
-  margin-top: 2rem;
+  margin-top: 2.5rem;
   text-align: left;
 }
 
 .card {
-  background: white;
-  border: 1px solid #e9ecef;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.75rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+/* gradient accent line that slides in on hover */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--pyra-red), var(--pyra-orange));
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
 .card:hover {
-  border-color: #e63946;
-  box-shadow: 0 4px 12px rgba(230, 57, 70, 0.08);
+  border-color: rgba(230, 57, 70, 0.25);
+  box-shadow: 0 8px 32px rgba(230, 57, 70, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+}
+
+.card:hover::before {
+  opacity: 1;
 }
 
 .card h3 {
   font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.6rem;
+  color: var(--text);
 }
 
 .card p {
-  color: #6c757d;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 
+/* ── Content Page (About, etc.) ─────────────────────────────────────────────── */
 .content {
-  padding: 2rem 0;
+  padding: 3rem 0;
+  max-width: 40rem;
 }
 
 .content h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
-  letter-spacing: -0.02em;
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, var(--pyra-red), var(--pyra-orange));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .content p {
-  color: #6c757d;
+  color: var(--muted);
   font-size: 1.05rem;
-  line-height: 1.7;
+  line-height: 1.75;
   margin-bottom: 1rem;
 }
 
+/* ── Footer ─────────────────────────────────────────────────────────────────── */
 .footer {
-  border-top: 1px solid #e9ecef;
+  background: var(--pyra-dark);
+  border-top: 1px solid rgba(230, 57, 70, 0.15);
   padding: 1.5rem 2rem;
   text-align: center;
-  color: #adb5bd;
+  color: rgba(255, 255, 255, 0.3);
   font-size: 0.85rem;
 }
 
 .footer a {
-  color: #e63946;
+  color: var(--pyra-red);
   text-decoration: none;
+  transition: color 0.15s;
 }
 
 .footer a:hover {
-  text-decoration: underline;
+  color: var(--pyra-orange);
 }
 
+/* ── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .hero h1 { font-size: 2rem; }
-  .cards { grid-template-columns: 1fr; }
-  .nav { padding: 0 1rem; }
-  .main { padding: 2rem 1rem; }
+  .hero {
+    padding: 3.5rem 0 2.5rem;
+  }
+
+  .hero h1 {
+    font-size: 2.25rem;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .nav {
+    padding: 0 1.25rem;
+  }
+
+  .main {
+    padding: 2rem 1.25rem;
+  }
+
+  .content {
+    padding: 2rem 0;
+  }
 }
