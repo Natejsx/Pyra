@@ -330,8 +330,8 @@ const FRAMEWORK_LABELS: Record<Framework, string> = {
 };
 
 const MODE_LABELS: Record<AppMode, string> = {
-  ssr: "SSR",
-  spa: "SPA",
+  ssr: "Full-stack",
+  spa: "Frontend (SPA)",
 };
 
 const LANGUAGE_LABELS: Record<Language, string> = {
@@ -467,12 +467,12 @@ async function main(): Promise<void> {
       options: [
         {
           value: "ssr" as AppMode,
-          label: pc.green("SSR"),
+          label: pc.green("Full-stack"),
           hint: "Server-side rendering",
         },
         {
           value: "spa" as AppMode,
-          label: pc.yellow("SPA"),
+          label: pc.yellow("Frontend (SPA)"),
           hint: "single-page application",
         },
       ],

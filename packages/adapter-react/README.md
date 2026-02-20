@@ -1,6 +1,6 @@
 # pyrajs-adapter-react
 
-React adapter for Pyra.js. Wires React 18/19 into the Pyra SSR pipeline — server-side rendering with `renderToString()`, client-side hydration with `hydrateRoot()`, layout wrapping, and an `<Image>` component for responsive image optimization.
+React adapter for Pyra.js. Wires React 18/19 into the Pyra SSR pipeline, server-side rendering with `renderToString()`, client-side hydration with `hydrateRoot()`, layout wrapping, and an `<Image>` component for responsive image optimization.
 
 ```bash
 npm install pyrajs-adapter-react react react-dom
@@ -147,17 +147,18 @@ In development, images are optimized on-demand. In production, pre-built variant
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
+
 | `src` | `string` | required | Image path relative to `public/` |
 | `alt` | `string` | required | Alt text for accessibility |
-| `width` | `number` | — | Intrinsic display width (prevents layout shift) |
-| `height` | `number` | — | Intrinsic display height (prevents layout shift) |
+| `width` | `number` | - | Intrinsic display width (prevents layout shift) |
+| `height` | `number` | - | Intrinsic display height (prevents layout shift) |
 | `sizes` | `string` | `'100vw'` | CSS `sizes` descriptor for the browser's width selection |
 | `formats` | `ImageFormat[]` | `['avif', 'webp']` | Formats to request, best-first |
 | `widths` | `number[]` | `[640, 1280, 1920]` | Width variants to generate |
 | `quality` | `number` | `80` | Compression quality 1–100 |
 | `loading` | `'lazy' \| 'eager'` | `'lazy'` | Browser loading behavior |
-| `className` | `string` | — | Class applied to the `<img>` element |
-| `style` | `CSSProperties` | — | Inline styles applied to the `<img>` element |
+| `className` | `string` | - | Class applied to the `<img>` element |
+| `style` | `CSSProperties` | - | Inline styles applied to the `<img>` element |
 
 Enable the plugin in your config to activate image optimization:
 
