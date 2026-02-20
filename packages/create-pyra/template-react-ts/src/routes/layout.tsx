@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
       </main>
       <footer className="footer">
-        Built with <a href="https://github.com/Simpleboi/Pyra">Pyra.js</a>
+        Built with <a href="https://pyrajs.dev/" target='_blank'>Pyra.js</a>
       </footer>
     </div>
   );
