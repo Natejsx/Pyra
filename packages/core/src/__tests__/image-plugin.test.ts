@@ -4,6 +4,18 @@ import os from 'node:os';
 import path from 'node:path';
 import type { RouteManifest } from 'pyrajs-shared';
 
+// Mock pyrajs-shared so `log` is available after vi.resetModules() calls.
+// vi.mock() is hoisted and survives module resets, so image-plugin.ts always
+// gets this mock when it's re-imported in each test.
+vi.mock('pyrajs-shared', () => ({
+  log: {
+    info: vi.fn(),
+    success: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 // ─── Filesystem helpers ───────────────────────────────────────────────────────
 
 let tmpDir: string;
