@@ -4,17 +4,20 @@ import os from 'node:os';
 import path from 'node:path';
 import type { RouteManifest } from 'pyrajs-shared';
 
-// Mock pyrajs-shared so `log` is available after vi.resetModules() calls.
-// vi.mock() is hoisted and survives module resets, so image-plugin.ts always
-// gets this mock when it's re-imported in each test.
-vi.mock('pyrajs-shared', () => ({
-  log: {
-    info: vi.fn(),
-    success: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
+// ─── Mocks ────────────────────────────────────────────────────────────────────
+// vi.mock() is hoisted above all imports by vitest, so image-plugin.ts gets the
+// mocked optimizer when it is statically imported below. This removes the need
+// for vi.resetModules() + dynamic imports, which bypassed the Vite alias and
+// caused "Failed to resolve entry for pyrajs-shared" in CI environments where
+// packages/shared/dist/ has not been built yet.
+vi.mock('../image-optimizer.js', () => ({
+  isSharpAvailable: vi.fn(),
+  getImageMetadata: vi.fn(),
+  optimizeImage: vi.fn(),
 }));
+
+import { pyraImages } from '../plugins/image-plugin.js';
+import * as imageOptimizer from '../image-optimizer.js';
 
 // ─── Filesystem helpers ───────────────────────────────────────────────────────
 
@@ -27,30 +30,25 @@ function writeFakeImage(relPath: string, content = 'fake-image-bytes'): string {
   return abs;
 }
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
+// ─── Mock configuration helpers ───────────────────────────────────────────────
 
-/** Resets module registry so fresh imports get fresh module-level state. */
-function resetAndMockOptimizer(overrides: {
-  available?: boolean;
-  metadata?: { width: number; height: number; format: string };
-  buffer?: Buffer;
-} = {}) {
-  vi.resetModules();
-  const available = overrides.available ?? true;
-  const metadata = overrides.metadata ?? { width: 1000, height: 750, format: 'jpeg' };
-  const buffer = overrides.buffer ?? Buffer.from('optimized-image-data');
+function mockSharpAvailable(
+  buffer = Buffer.from('optimized-image-data'),
+  metadata = { width: 1000, height: 750, format: 'jpeg' },
+) {
+  vi.mocked(imageOptimizer.isSharpAvailable).mockResolvedValue(true);
+  vi.mocked(imageOptimizer.getImageMetadata).mockResolvedValue(metadata);
+  vi.mocked(imageOptimizer.optimizeImage).mockResolvedValue({
+    buffer,
+    width: metadata.width,
+    height: metadata.height,
+    format: 'webp',
+    size: buffer.length,
+  });
+}
 
-  vi.doMock('../image-optimizer.js', () => ({
-    isSharpAvailable: vi.fn().mockResolvedValue(available),
-    getImageMetadata: vi.fn().mockResolvedValue(metadata),
-    optimizeImage: vi.fn().mockResolvedValue({
-      buffer,
-      width: metadata.width,
-      height: metadata.height,
-      format: 'webp',
-      size: buffer.length,
-    }),
-  }));
+function mockSharpUnavailable() {
+  vi.mocked(imageOptimizer.isSharpAvailable).mockResolvedValue(false);
 }
 
 // ─── Setup / teardown ─────────────────────────────────────────────────────────
@@ -61,27 +59,24 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
-  vi.doUnmock('../image-optimizer.js');
+  vi.clearAllMocks();
 });
 
-// ─── Plugin identity ─────────────────────────────────────────────────────────
+// ─── Plugin identity ──────────────────────────────────────────────────────────
 
 describe('pyraImages() — plugin identity', () => {
-  beforeEach(() => resetAndMockOptimizer());
+  beforeEach(() => mockSharpAvailable());
 
-  it('has name "pyra:images"', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
+  it('has name "pyra:images"', () => {
     const plugin = pyraImages();
     expect(plugin.name).toBe('pyra:images');
   });
 
-  it('works with no arguments (all defaults)', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
+  it('works with no arguments (all defaults)', () => {
     expect(() => pyraImages()).not.toThrow();
   });
 
-  it('works with partial config', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
+  it('works with partial config', () => {
     expect(() => pyraImages({ formats: ['avif'], quality: 90 })).not.toThrow();
   });
 });
@@ -89,19 +84,14 @@ describe('pyraImages() — plugin identity', () => {
 // ─── Plugin hooks — buildEnd ──────────────────────────────────────────────────
 
 describe('pyraImages() — buildEnd()', () => {
-  beforeEach(() => resetAndMockOptimizer());
+  beforeEach(() => mockSharpAvailable());
 
   it('sets manifest.images when variants were built', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
     const plugin = pyraImages();
-
-    // Seed internal builtImages by simulating a successful buildStart
-    const publicDir = path.join(tmpDir, 'public');
     const outDir = path.join(tmpDir, 'dist');
     writeFakeImage('public/hero.jpg');
     fs.mkdirSync(path.join(outDir, 'client', '_images'), { recursive: true });
 
-    // Simulate setup and buildStart lifecycle
     await plugin.setup?.({
       addEsbuildPlugin: vi.fn(),
       getConfig: vi.fn().mockReturnValue({
@@ -120,10 +110,7 @@ describe('pyraImages() — buildEnd()', () => {
   });
 
   it('does not set manifest.images when no images were found', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
     const plugin = pyraImages();
-
-    // Empty public dir — no images
     fs.mkdirSync(path.join(tmpDir, 'public'), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, 'dist', 'client', '_images'), { recursive: true });
 
@@ -143,8 +130,7 @@ describe('pyraImages() — buildEnd()', () => {
     expect(manifest.images).toBeUndefined();
   });
 
-  it('buildEnd does not throw when called before buildStart', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
+  it('buildEnd does not throw when called before buildStart', () => {
     const plugin = pyraImages();
     const manifest: RouteManifest = { routes: {} };
     expect(() =>
@@ -156,14 +142,14 @@ describe('pyraImages() — buildEnd()', () => {
 // ─── Plugin hooks — buildStart (sharp available) ──────────────────────────────
 
 describe('pyraImages() — buildStart() with sharp available', () => {
-  beforeEach(() => resetAndMockOptimizer({
-    available: true,
-    metadata: { width: 1000, height: 750, format: 'jpeg' },
-    buffer: Buffer.from('x'.repeat(1234)),
-  }));
+  beforeEach(() =>
+    mockSharpAvailable(
+      Buffer.from('x'.repeat(1234)),
+      { width: 1000, height: 750, format: 'jpeg' },
+    )
+  );
 
   async function setupPlugin(config: Record<string, unknown> = {}) {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
     const plugin = pyraImages({ formats: ['webp'], sizes: [640, 1280], quality: 80 });
     fs.mkdirSync(path.join(tmpDir, 'public'), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, 'dist', 'client', '_images'), { recursive: true });
@@ -181,7 +167,6 @@ describe('pyraImages() — buildStart() with sharp available', () => {
 
   it('skips when public dir has no images', async () => {
     const plugin = await setupPlugin();
-    // No files in public/
     await expect(plugin.buildStart?.()).resolves.not.toThrow();
     const manifest: RouteManifest = { routes: {} };
     plugin.buildEnd?.({ manifest, outDir: path.join(tmpDir, 'dist'), root: tmpDir });
@@ -189,8 +174,6 @@ describe('pyraImages() — buildStart() with sharp available', () => {
   });
 
   it('skips when public dir does not exist', async () => {
-    // Don't create the public dir
-    const { pyraImages } = await import('../plugins/image-plugin.js');
     const plugin = pyraImages({ formats: ['webp'] });
     await plugin.setup?.({
       addEsbuildPlugin: vi.fn(),
@@ -247,7 +230,6 @@ describe('pyraImages() — buildStart() with sharp available', () => {
     const manifest: RouteManifest = { routes: {} };
     plugin.buildEnd?.({ manifest, outDir: path.join(tmpDir, 'dist'), root: tmpDir });
     const entry = manifest.images?.['/img.jpg'];
-    // Should have keys like "640:webp", "1280:webp"
     expect(Object.keys(entry?.variants ?? {})).toEqual(
       expect.arrayContaining(['640:webp'])
     );
@@ -277,9 +259,7 @@ describe('pyraImages() — buildStart() with sharp available', () => {
   });
 
   it('never generates variants wider than the original image', async () => {
-    // Original is 1000px wide; requesting 1280w should be skipped
     writeFakeImage('public/small.jpg');
-    const { pyraImages } = await import('../plugins/image-plugin.js');
     const plugin = pyraImages({ formats: ['webp'], sizes: [640, 1280] });
     fs.mkdirSync(path.join(tmpDir, 'dist', 'client', '_images'), { recursive: true });
     await plugin.setup?.({
@@ -291,7 +271,6 @@ describe('pyraImages() — buildStart() with sharp available', () => {
     const manifest: RouteManifest = { routes: {} };
     plugin.buildEnd?.({ manifest, outDir: path.join(tmpDir, 'dist'), root: tmpDir });
     const entry = manifest.images?.['/small.jpg'];
-    // 640w should exist (640 < 1000), 1280w should not (1280 > 1000)
     expect(entry?.variants['640:webp']).toBeDefined();
     expect(entry?.variants['1280:webp']).toBeUndefined();
   });
@@ -318,7 +297,6 @@ describe('pyraImages() — buildStart() with sharp available', () => {
 
   it('ignores non-image files in public/', async () => {
     writeFakeImage('public/img.jpg');
-    // Non-image files that should be ignored
     fs.writeFileSync(path.join(tmpDir, 'public', 'styles.css'), 'body {}');
     fs.writeFileSync(path.join(tmpDir, 'public', 'robots.txt'), 'User-agent: *');
     const plugin = await setupPlugin();
@@ -333,11 +311,10 @@ describe('pyraImages() — buildStart() with sharp available', () => {
 // ─── Plugin hooks — buildStart (sharp unavailable) ───────────────────────────
 
 describe('pyraImages() — buildStart() with sharp unavailable', () => {
-  beforeEach(() => resetAndMockOptimizer({ available: false }));
+  beforeEach(() => mockSharpUnavailable());
 
   it('returns without throwing when sharp is missing', async () => {
     writeFakeImage('public/hero.jpg');
-    const { pyraImages } = await import('../plugins/image-plugin.js');
     const plugin = pyraImages();
     fs.mkdirSync(path.join(tmpDir, 'dist', 'client', '_images'), { recursive: true });
     await plugin.setup?.({
@@ -350,7 +327,6 @@ describe('pyraImages() — buildStart() with sharp unavailable', () => {
 
   it('does not populate manifest.images when sharp is missing', async () => {
     writeFakeImage('public/hero.jpg');
-    const { pyraImages } = await import('../plugins/image-plugin.js');
     const plugin = pyraImages();
     fs.mkdirSync(path.join(tmpDir, 'dist', 'client', '_images'), { recursive: true });
     await plugin.setup?.({
@@ -368,17 +344,15 @@ describe('pyraImages() — buildStart() with sharp unavailable', () => {
 // ─── config() hook ────────────────────────────────────────────────────────────
 
 describe('pyraImages() — config() hook', () => {
-  beforeEach(() => resetAndMockOptimizer());
+  beforeEach(() => mockSharpAvailable());
 
-  it('returns null (does not mutate config)', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
+  it('returns null (does not mutate config)', () => {
     const plugin = pyraImages();
     const result = plugin.config?.({ root: '/app' }, 'production');
     expect(result).toBeNull();
   });
 
-  it('config hook is defined', async () => {
-    const { pyraImages } = await import('../plugins/image-plugin.js');
+  it('config hook is defined', () => {
     const plugin = pyraImages();
     expect(typeof plugin.config).toBe('function');
   });
