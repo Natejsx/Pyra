@@ -1,0 +1,361 @@
+# Testing
+
+Pyra is designed to be tested without spinning up a server. Route modules, `load()` functions, API handlers, and middleware are all plain async functions — you import them and call them directly. This page shows how to set up Vitest and test each part of a Pyra application.
+
+---
+
+## Setup
+
+Pyra projects use [Vitest](https://vitest.dev). Install it as a dev dependency:
+
+```bash
+pnpm add -D vitest
+```
+
+Add a `vitest.config.ts` to your project root:
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+  },
+});
+```
+
+Add the test script to `package.json`:
+
+```json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}
+```
+
+All imports in Vitest must be explicit — no globals. Import `describe`, `it`, `expect`, and `vi` from `vitest` in every test file.
+
+---
+
+## Testing `load()` functions
+
+`load()` functions are async functions that receive a `RequestContext`. Use `createBuildTimeRequestContext` from `@pyra-js/core` to build a test context without a real HTTP request.
+
+```ts
+// src/routes/blog/[slug]/page.test.ts
+import { describe, it, expect, vi } from 'vitest';
+import { createBuildTimeRequestContext } from '@pyra-js/core';
+import { load } from './page.js';
+
+describe('load()', () => {
+  it('returns a post for a valid slug', async () => {
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/blog/hello-world',
+      params: { slug: 'hello-world' },
+      routeId: '/blog/[slug]',
+    });
+
+    const data = await load(ctx);
+
+    expect(data.post.slug).toBe('hello-world');
+    expect(data.post.title).toBeDefined();
+  });
+
+  it('redirects to /404 for an unknown slug', async () => {
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/blog/does-not-exist',
+      params: { slug: 'does-not-exist' },
+      routeId: '/blog/[slug]',
+    });
+
+    const result = await load(ctx);
+
+    // load() returns a Response when it short-circuits (e.g. ctx.redirect())
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(302);
+    expect((result as Response).headers.get('location')).toBe('/404');
+  });
+});
+```
+
+`createBuildTimeRequestContext` options:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pathname` | `string` | The URL pathname (e.g. `'/blog/hello-world'`) |
+| `params` | `Record<string, string>` | Dynamic route params (e.g. `{ slug: 'hello-world' }`) |
+| `routeId` | `string` | The route pattern (e.g. `'/blog/[slug]'`) |
+
+The returned context has all `RequestContext` fields: `ctx.params`, `ctx.url`, `ctx.env`, `ctx.cookies`, `ctx.headers`, and the response helpers `ctx.json()`, `ctx.html()`, `ctx.redirect()`, `ctx.text()`.
+
+---
+
+## Testing API route handlers
+
+API handlers are named exports (`GET`, `POST`, etc.) that receive a `RequestContext` and return a `Response`. Test them the same way as `load()` — build a context and call the handler directly.
+
+```ts
+// src/routes/api/items/route.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createBuildTimeRequestContext } from '@pyra-js/core';
+import { GET, POST } from './route.js';
+
+describe('GET /api/items', () => {
+  it('returns a list of items', async () => {
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/api/items',
+      params: {},
+      routeId: '/api/items',
+    });
+
+    const res = await GET(ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(body)).toBe(true);
+  });
+});
+
+describe('POST /api/items', () => {
+  it('creates an item and returns 201', async () => {
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/api/items',
+      params: {},
+      routeId: '/api/items',
+    });
+
+    // Attach a body to the underlying Request
+    const req = new Request('http://localhost/api/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Widget' }),
+    });
+    (ctx as any).request = req;
+
+    const res = await POST(ctx);
+
+    expect(res.status).toBe(201);
+  });
+});
+```
+
+---
+
+## Testing middleware
+
+Import `runMiddleware` from `@pyra-js/core` to run a middleware chain against a context in isolation. Use `vi.fn()` to assert whether the next handler was called.
+
+```ts
+// src/routes/dashboard/middleware.test.ts
+import { describe, it, expect, vi } from 'vitest';
+import { createBuildTimeRequestContext, runMiddleware } from '@pyra-js/core';
+import auth from './middleware.js';
+
+const handler = vi.fn(async () => new Response('ok', { status: 200 }));
+
+describe('auth middleware', () => {
+  it('allows requests with a valid session cookie', async () => {
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/dashboard',
+      params: {},
+      routeId: '/dashboard',
+    });
+    ctx.cookies.set('session', 'valid-token-123');
+
+    const res = await runMiddleware([auth], ctx, handler);
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(res.status).toBe(200);
+  });
+
+  it('redirects unauthenticated requests to /login', async () => {
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/dashboard',
+      params: {},
+      routeId: '/dashboard',
+    });
+
+    const res = await runMiddleware([auth], ctx, handler);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/login');
+  });
+});
+```
+
+`runMiddleware(chain, ctx, handler)` runs the middleware array and calls `handler` if no middleware short-circuits. The return value is the final `Response`.
+
+---
+
+## Mocking `fetch`
+
+Use `vi.stubGlobal` to replace `fetch` for tests that call external services:
+
+```ts
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { createBuildTimeRequestContext } from '@pyra-js/core';
+import { load } from './page.js';
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('load() with mocked fetch', () => {
+  it('returns posts from the API', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([{ id: 1, title: 'Hello' }]), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    ));
+
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/',
+      params: {},
+      routeId: '/',
+    });
+
+    const data = await load(ctx);
+
+    expect(data.posts).toHaveLength(1);
+    expect(data.posts[0].title).toBe('Hello');
+  });
+});
+```
+
+---
+
+## Testing with environment variables
+
+Set `process.env` values in `beforeEach` and clean them up in `afterEach`. The `PYRA_` prefix is stripped when values reach `ctx.env`, so set the full prefixed name:
+
+```ts
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createBuildTimeRequestContext } from '@pyra-js/core';
+import { load } from './page.js';
+
+beforeEach(() => {
+  process.env.PYRA_API_URL = 'https://test-api.example.com';
+});
+
+afterEach(() => {
+  delete process.env.PYRA_API_URL;
+});
+
+describe('load() env', () => {
+  it('reads API_URL from ctx.env', async () => {
+    const ctx = createBuildTimeRequestContext({
+      pathname: '/',
+      params: {},
+      routeId: '/',
+    });
+
+    expect(ctx.env.API_URL).toBe('https://test-api.example.com');
+  });
+});
+```
+
+---
+
+## Testing React components
+
+Install `@testing-library/react` and `jsdom` for component tests:
+
+```bash
+pnpm add -D @testing-library/react jsdom
+```
+
+Add a separate vitest config for component tests (or extend the existing one with multiple environments):
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.tsx'],
+  },
+});
+```
+
+Test page components by rendering them directly with the data your `load()` would return:
+
+```tsx
+// src/routes/blog/[slug]/page.test.tsx
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import BlogPost from './page.js';
+
+describe('<BlogPost />', () => {
+  it('renders the post title', () => {
+    const post = { slug: 'hello', title: 'Hello World', body: 'Content here.' };
+
+    render(<BlogPost post={post} />);
+
+    expect(screen.getByRole('heading', { name: 'Hello World' })).toBeInTheDocument();
+  });
+
+  it('renders the post body', () => {
+    const post = { slug: 'hello', title: 'Hello', body: 'Content here.' };
+
+    render(<BlogPost post={post} />);
+
+    expect(screen.getByText('Content here.')).toBeInTheDocument();
+  });
+});
+```
+
+The page component receives load data as props — test the component in isolation without involving the server or `load()` function.
+
+---
+
+## Project structure
+
+Keep test files co-located with the source they test:
+
+```
+src/
+  routes/
+    blog/
+      [slug]/
+        page.tsx
+        page.test.tsx        ← component test
+    api/
+      items/
+        route.ts
+        route.test.ts        ← handler test
+    dashboard/
+      middleware.ts
+      middleware.test.ts     ← middleware test
+  lib/
+    dates.ts
+    dates.test.ts            ← unit test
+```
+
+---
+
+## Running tests in CI
+
+The default CI workflow runs `pnpm test` which maps to `vitest run` (single run, no watch mode). Tests are run across Node 18, 20, and 22:
+
+```yaml
+- name: Test
+  run: pnpm test
+```
+
+To run tests locally in watch mode during development:
+
+```bash
+pnpm test:watch
+```
+
+To generate a coverage report:
+
+```bash
+pnpm test:coverage
+```
+
+Coverage output goes to `coverage/` which is gitignored.
