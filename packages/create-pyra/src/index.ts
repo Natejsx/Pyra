@@ -596,10 +596,14 @@ async function main(): Promise<void> {
   const summaryLines = [
     summaryRow("Project", projectName),
     summaryRow("Framework", FRAMEWORK_LABELS[framework]),
-    ...(framework !== "vanilla"
-      ? [summaryRow("Mode", MODE_LABELS[appMode])]
-      : []),
+    ...(framework !== "vanilla" ? [summaryRow("Mode", MODE_LABELS[appMode])] : []),
     summaryRow("Variant", LANGUAGE_LABELS[language]),
+    ...(framework === "react" && appMode === "spa" && spaRouter !== "none"
+      ? [summaryRow("Router", ROUTER_LABELS[spaRouter])]
+      : []),
+    ...(framework === "react"
+      ? [summaryRow("React Compiler", reactCompiler ? "Yes" : "No")]
+      : []),
     summaryRow("Tailwind", tailwind ? "Yes" : "No"),
     summaryRow("Package Mgr", chosenPM),
     summaryRow("Install", shouldInstall ? "Yes" : "No"),
@@ -632,11 +636,20 @@ async function main(): Promise<void> {
     projectName,
   );
 
+  const patchFiles = applyPatches(projectDir, {
+    framework,
+    appMode,
+    language,
+    spaRouter,
+    reactCompiler,
+    projectName,
+  });
+
   const tailwindFiles = tailwind
     ? scaffoldTailwind(projectDir, framework, appMode, language)
     : [];
 
-  const allFiles = [...templateFiles, ...tailwindFiles];
+  const allFiles = [...templateFiles, ...patchFiles, ...tailwindFiles];
 
   spin.stop(S.success("Project scaffolded"));
 
