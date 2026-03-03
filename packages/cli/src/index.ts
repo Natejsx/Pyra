@@ -14,6 +14,12 @@ export type {
   BuildConfig,
   ResolveConfig,
   EnvConfig,
+  // User-facing types for route files
+  RequestContext,
+  Middleware,
+  ErrorPageProps,
+  CacheConfig,
+  PrerenderConfig,
 } from '@pyra/shared';
 
 export { defineConfig, defineConfigFn } from '@pyra/shared';
