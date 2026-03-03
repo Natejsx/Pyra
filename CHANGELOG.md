@@ -5,6 +5,34 @@ All notable changes to Pyra.js are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-03-03
+
+### Added
+- Router and React Compiler options in `create-pyra` wizard, new post-copy patching system in `packages/create-pyra/src/patches.ts` applies targeted file modifications after the base template is copied, avoiding a explosion of template directories
+  - React SPA mode now prompts for a client-side router: None, React Router v7 (`react-router: ^7.0.0`), or TanStack Router (`@tanstack/react-router: ^1.0.0`)
+  - React Router patch: rewrites `main.tsx` with `createBrowserRouter`, converts `App.tsx` into a layout shell with `<Outlet />`, and creates `src/pages/Home.tsx`
+  - TanStack Router patch: rewrites `main.tsx` with a fully code-based router, removes `App.tsx` (root route replaces it)
+  - React (both SSR and SPA) now prompts to enable the React Compiler, adds `babel-plugin-react-compiler` and `esbuild-plugin-babel` devDependencies and rewrites `pyra.config.ts/js` with a working Pyra plugin block
+- Separator lines in request trace terminal output - each `toDetailedLog()` block is now wrapped with a `──────────────────────────────────────` rule above and below, making individual requests visually distinct in busy dev server output
+- Compat shim packages (`packages/compat-pyrajs-*/`) - new versions of the old `pyrajs-*` package names that re-export from `@pyra-js/*` so existing projects continue to work without code changes
+  - `pyrajs-shared` → re-exports from `@pyra-js/shared`
+  - `pyrajs-core` → re-exports from `@pyra-js/core`
+  - `pyrajs-adapter-react` → re-exports from `@pyra-js/adapter-react`
+  - `pyrajs-cli` → re-exports from `@pyra-js/cli`; includes a `bin/pyra.mjs` shim so the `pyra` binary continues to resolve
+  - Each compat package ships a `README.md` with a deprecation notice and a migration guide
+
+### Changed
+- All four packages renamed to the `@pyra-js` npm scope
+  - `pyrajs-shared` → `@pyra-js/shared`
+  - `pyrajs-core` → `@pyra-js/core`
+  - `pyrajs-adapter-react` → `@pyra-js/adapter-react`
+  - `pyrajs-cli` → `@pyra-js/cli`
+- `defineConfig` and user-facing types (`RequestContext`, `Middleware`, `ErrorPageProps`, `CacheConfig`, `PrerenderConfig`) are now re-exported from `@pyra-js/cli` - application developers only ever need to import from `@pyra-js/cli` and never from `@pyra-js/shared` directly
+- All generated project templates (`create-pyra` and `packages/cli`) updated to import `defineConfig` from `@pyra-js/cli`
+
+### Fixed
+- `babel-plugin-react-compiler` version corrected from `^19.0.0` (non-existent) to `^1.0.0` - React Compiler reached stable 1.0 in October 2025 under its own versioning scheme
+
 ## [0.23.1] - 2026-02-28
 
 ### Added
