@@ -206,7 +206,7 @@ importers:
   packages/compat-pyrajs-adapter-react:
     dependencies:
       '@pyra-js/adapter-react':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../adapter-react
     devDependencies:
       tsup:
@@ -216,7 +216,7 @@ importers:
   packages/compat-pyrajs-cli:
     dependencies:
       '@pyra-js/cli':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../cli
     devDependencies:
       tsup:
@@ -226,7 +226,7 @@ importers:
   packages/compat-pyrajs-core:
     dependencies:
       '@pyra-js/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
     devDependencies:
       tsup:
@@ -236,7 +236,7 @@ importers:
   packages/compat-pyrajs-shared:
     dependencies:
       '@pyra-js/shared':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../shared
     devDependencies:
       tsup:
