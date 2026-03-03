@@ -15,6 +15,7 @@ import * as prompt from "@clack/prompts";
 import pc from "picocolors";
 import { S, stepLabel, summaryRow } from "./theme.js";
 import { formatFileTree } from "./tree.js";
+import { applyPatches, type SpaRouter } from "./patches.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -338,6 +339,19 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   typescript: "TypeScript",
   javascript: "JavaScript",
 };
+
+const ROUTER_LABELS: Record<SpaRouter, string> = {
+  none: "None",
+  "react-router": "React Router v7",
+  "tanstack-router": "TanStack Router",
+};
+
+function computeTotalSteps(framework: Framework, appMode: AppMode): number {
+  if (framework === "vanilla") return 6;          // name fw lang tailwind pm install
+  if (framework === "react" && appMode === "spa") return 9; // +mode +router +compiler
+  if (framework === "react") return 8;            // +mode +compiler
+  return 7;                                       // preact: +mode
+}
 
 
 // Cancellation Helper
