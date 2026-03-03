@@ -3,3 +3,12 @@ dist/
 .tmp/
 .DS_Store
 *.log
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Pyra dev server temp dir
+.pyra/
+
+# Test coverage output
+coverage/
