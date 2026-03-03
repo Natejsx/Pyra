@@ -154,7 +154,9 @@ export class RequestTracer {
 
     const header = `  ${method} ${this.pathname} ${statusColor(String(status))} ${pc.dim(`${roundedTotal}ms`)}`;
 
-    if (this.stages.length === 0) return header;
+    const sep = pc.dim('─'.repeat(38));
+
+    if (this.stages.length === 0) return [sep, header, sep].join('\n');
 
     const lines: string[] = [header];
 
@@ -184,7 +186,7 @@ export class RequestTracer {
       lines.push(`    ${connector} ${nameCol} ${duration}${detail}`);
     }
 
-    return lines.join('\n');
+    return [sep, ...lines, sep].join('\n');
   }
 
   private extractRouteId(): string | null {

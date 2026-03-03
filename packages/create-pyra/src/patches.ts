@@ -298,7 +298,7 @@ function patchReactCompiler(projectDir: string, ctx: PatchContext): void {
   // Add compiler deps to package.json
   patchPackageJson(projectDir, {
     devDependencies: {
-      "babel-plugin-react-compiler": "^19.0.0",
+      "babel-plugin-react-compiler": "^1.0.0",
       "esbuild-plugin-babel": "^0.2.3",
     },
   });
