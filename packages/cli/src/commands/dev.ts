@@ -30,12 +30,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
     const root = config.root || process.cwd();
 
-    if (!config.adapter) {
-      log.error("No adapter configured. Add an adapter to your pyra.config.ts, e.g.:\n\n  import { createReactAdapter } from '@pyra-js/adapter-react';\n  export default defineConfig({ adapter: createReactAdapter() });");
+    if (!config.adapter || typeof config.adapter !== "object") {
+      log.error("No adapter configured. Add an adapter to your pyra.config file, e.g.:\n\n  import { createReactAdapter } from '@pyra-js/adapter-react';\n  export default defineConfig({ adapter: createReactAdapter() });");
       process.exit(1);
     }
 
-    const adapter = config.adapter;
+    const adapter = config.adapter as import("@pyra-js/shared").PyraAdapter;
     const routesDir = path.resolve(root, config.routesDir || "src/routes");
 
     const actualPort = await findAvailablePort(requestedPort);
