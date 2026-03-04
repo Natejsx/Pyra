@@ -1,7 +1,6 @@
 import path from "node:path";
 import { log, loadConfig, getPort, getOutDir } from "@pyra-js/shared";
 import { ProdServer } from "@pyra-js/core";
-import { createReactAdapter } from "@pyra-js/adapter-react";
 import { getVersion } from "../utils/reporter.js";
 import { printProdBanner, detectCapabilities } from "../utils/dev-banner.js";
 import { setupKeyboardShortcuts } from "../utils/keyboard.js";
@@ -27,7 +26,12 @@ export async function startCommand(options: StartOptions): Promise<void> {
     const distDir = path.resolve(root, options.dist || getOutDir(config));
     const port = options.port ? parseInt(options.port, 10) : getPort(config);
 
-    const adapter = createReactAdapter();
+    if (!config.adapter) {
+      log.error("No adapter configured. Add an adapter to your pyra.config.ts, e.g.:\n\n  import { createReactAdapter } from '@pyra-js/adapter-react';\n  export default defineConfig({ adapter: createReactAdapter() });");
+      process.exit(1);
+    }
+
+    const adapter = config.adapter;
 
     const server = new ProdServer({
       distDir,
