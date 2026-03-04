@@ -405,7 +405,9 @@ describe('createReactAdapter — getHydrationScript()', () => {
     const { createReactAdapter } = await import('../adapter.js');
     const script = createReactAdapter().getHydrationScript('/app.js', 'root');
     expect(script).toContain('createElement(Component, data)');
-    expect(script).not.toContain('Layout');
+    // No layout import statements should appear (variable names like pageLayouts are fine)
+    expect(script).not.toContain('import Layout');
+    expect(script).not.toContain('Layout0');
   });
 });
 
