@@ -67,9 +67,7 @@ export function useNavigate(): (href: string) => void {
 }
 
 // useSearchParams
-type SetSearchParams = (
-  next: URLSearchParams | Record<string, string>
-) => void;
+type SetSearchParams = (next: URLSearchParams | Record<string, string>) => void;
 
 /**
  * Returns the current URL query string as a `URLSearchParams` object and a
@@ -89,7 +87,9 @@ export function useSearchParams(): [URLSearchParams, SetSearchParams] {
 
   const setSearchParams: SetSearchParams = useCallback((next) => {
     const params =
-      next instanceof URLSearchParams ? next : new URLSearchParams(next as Record<string, string>);
+      next instanceof URLSearchParams
+        ? next
+        : new URLSearchParams(next as Record<string, string>);
     const qs = params.toString();
     const url = window.location.pathname + (qs ? "?" + qs : "");
     history.pushState(null, "", url);
@@ -160,4 +160,149 @@ export function useNavigating(): boolean {
   }, []);
 
   return navigating;
+}
+
+// usePreload
+
+/**
+ * Returns a `preload(href)` function that fires a background fetch to warm up
+ * the navigation data for a route before the user clicks. Attach it to
+ * `onMouseEnter` or `onFocus` on any link to make subsequent navigation
+ * feel instant — the browser caches the response automatically.
+ *
+ * @example
+ * const preload = usePreload();
+ * <Link href="/blog" onMouseEnter={() => preload("/blog")}>Blog</Link>
+ */
+export function usePreload(): (href: string) => void {
+  return useCallback((href: string) => {
+    try {
+      const target = new URL(href, window.location.href);
+      if (target.origin !== window.location.origin) return;
+      fetch(
+        "/_pyra/navigate?path=" +
+          encodeURIComponent(target.pathname + target.search),
+        { priority: "low" } as RequestInit,
+      ).catch(() => {
+        /* silently ignore preload failures */
+      });
+    } catch {
+      // invalid URL — ignore
+    }
+  }, []);
+}
+
+// useBeforeNavigate
+
+type NavigationGuard = (
+  href: string,
+) => boolean | string | Promise<boolean | string>;
+
+/**
+ * Registers a navigation guard that runs before every client-side navigation.
+ * The guard receives the destination href and must return:
+ * - `true` — allow navigation
+ * - `false` — silently cancel navigation
+ * - a string — show a `window.confirm()` dialog with that message; navigation
+ *   proceeds only if the user confirms
+ *
+ * The guard is automatically removed when the component unmounts.
+ *
+ * @example
+ * useBeforeNavigate((href) => {
+ *   if (hasUnsavedChanges) {
+ *     return "You have unsaved changes. Leave anyway?";
+ *   }
+ *   return true;
+ * });
+ */
+export function useBeforeNavigate(guard: NavigationGuard): void {
+  useEffect(() => {
+    const guards: Set<NavigationGuard> = (window as any).__pyra?.guards;
+    if (!guards) return;
+    guards.add(guard);
+    return () => {
+      guards.delete(guard);
+    };
+  }, [guard]);
+}
+
+// useScrollRestoration
+
+/**
+ * Opts into scroll position restoration for Back/Forward navigation.
+ * Call once in your root layout. Once active:
+ * - Forward navigation scrolls to the top (same as default)
+ * - Back/Forward navigation restores the scroll position from when you left
+ *
+ * Positions are stored in sessionStorage keyed by URL, so they survive
+ * soft reloads within the same session.
+ *
+ * @example
+ * // src/routes/layout.tsx
+ * export default function Layout({ children }) {
+ *   useScrollRestoration();
+ *   return <div>{children}</div>;
+ * }
+ */
+export function useScrollRestoration(): void {
+  useEffect(() => {
+    const pyra = (window as any).__pyra;
+    if (pyra) pyra.disableAutoScroll = true;
+
+    const saveScroll = () => {
+      sessionStorage.setItem(
+        "__pyra_scroll_" + window.location.href,
+        String(window.scrollY),
+      );
+    };
+
+    const restoreScroll = () => {
+      const type = (window as any).__pyra?.navigationType;
+      if (type === "pop") {
+        const saved = sessionStorage.getItem(
+          "__pyra_scroll_" + window.location.href,
+        );
+        window.scrollTo(0, saved ? parseInt(saved, 10) : 0);
+      } else {
+        window.scrollTo(0, 0);
+      }
+    };
+
+    window.addEventListener("pyra:navigate-start", saveScroll);
+    window.addEventListener("pyra:navigate", restoreScroll);
+
+    return () => {
+      if ((window as any).__pyra)
+        (window as any).__pyra.disableAutoScroll = false;
+      window.removeEventListener("pyra:navigate-start", saveScroll);
+      window.removeEventListener("pyra:navigate", restoreScroll);
+    };
+  }, []);
+}
+
+// useRouteError
+
+export interface RouteError {
+  message: string;
+  stack?: string;
+}
+
+/**
+ * Returns the error that caused the nearest `error.tsx` boundary to render.
+ * Use this inside error boundary components as an alternative to reading the
+ * `error` prop — useful when you need the error in a nested component without
+ * prop drilling.
+ *
+ * Returns `null` when there is no active route error.
+ *
+ * @example
+ * // src/routes/error.tsx
+ * export default function ErrorPage() {
+ *   const error = useRouteError();
+ *   return <div>Something went wrong: {error?.message}</div>;
+ * }
+ */
+export function useRouteError(): RouteError | null {
+  return (window as any).__pyra?.routeError ?? null;
 }
