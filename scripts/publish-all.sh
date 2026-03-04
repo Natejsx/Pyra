@@ -32,26 +32,13 @@ publish() {
   echo ""
 }
 
-deprecate() {
-  local pkg="$1"
-  local msg="$2"
-  echo "⚠️   Deprecating $pkg..."
-  if [ "$DRY_RUN" = true ]; then
-    echo "    [dry-run] npm deprecate \"$pkg\" \"$msg\""
-  else
-    npm deprecate "$pkg" "$msg"
-  fi
-  echo "    ✅ $pkg deprecated"
-  echo ""
-}
-
 # Sync compat versions to match real packages
 # Compat shims must always publish at the same version as the real packages so users upgrading pyrajs-cli always get a shim that points at the matching @pyra-js/cli version.
 sync_compat_versions() {
   local version="$1"
   for f in "$ROOT"/packages/compat-pyrajs-*/package.json; do
     local winpath
-    winpath=$(cygpath -w "$f")
+    winpath=$(cygpath -m "$f")
     node -e "
       const fs = require('fs');
       const pkg = JSON.parse(fs.readFileSync('${winpath}', 'utf8'));
@@ -116,15 +103,6 @@ publish "packages/compat-pyrajs-shared"        "pyrajs-shared"
 publish "packages/compat-pyrajs-core"          "pyrajs-core"
 publish "packages/compat-pyrajs-adapter-react" "pyrajs-adapter-react"
 publish "packages/compat-pyrajs-cli"           "pyrajs-cli"
-
-# Step 4: Deprecate old package names
-echo "── Deprecating old names ─────────────────────────────────────────────────"
-echo ""
-
-deprecate "pyrajs-cli"           "Renamed to @pyra-js/cli. Update your devDependencies and imports."
-deprecate "pyrajs-shared"        "Renamed to @pyra-js/shared. User-facing types are re-exported from @pyra-js/cli."
-deprecate "pyrajs-core"          "Renamed to @pyra-js/core."
-deprecate "pyrajs-adapter-react" "Renamed to @pyra-js/adapter-react."
 
 # Done
 echo "╔════════════════════════════════════════╗"
