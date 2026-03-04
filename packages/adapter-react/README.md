@@ -121,6 +121,29 @@ export const prerender = {
 
 ---
 
+## The `<Link>` Component
+
+Use `<Link>` instead of `<a>` for internal navigation. It intercepts same-origin clicks and performs client-side navigation, the page swaps without a full reload.
+
+```tsx
+import { Link } from '@pyra-js/adapter-react';
+
+export default function Nav() {
+  return (
+    <nav>
+      <Link href="/">Home</Link>
+      <Link href="/about">About</Link>
+    </nav>
+  );
+}
+```
+
+Modifier-key clicks (Cmd, Ctrl, Shift) and external links fall through to normal browser behavior. If the destination uses a different layout chain, `<Link>` falls back to a full page load automatically.
+
+For programmatic navigation, use `window.__pyra.navigate(href)`.
+
+---
+
 ## The `<Image>` Component
 
 The adapter exports an `<Image>` component that generates responsive `<picture>` elements. It works with the `pyraImages()` plugin from `@pyra-js/core` to serve optimized WebP/AVIF variants.
