@@ -228,6 +228,99 @@ export class ProdServer {
         return;
       }
 
+      // 1a. Client-side navigation data endpoint
+      if (cleanUrl === "/_pyra/navigate") {
+        if (method !== "GET") {
+          res.writeHead(405, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Method not allowed" }));
+          return;
+        }
+
+        const urlObj = new URL(url, `http://${req.headers.host || "localhost"}`);
+        const navigatePath = urlObj.searchParams.get("path") || "/";
+        const cleanNavPath = navigatePath.split("?")[0];
+
+        const navMatch = this.matcher.match(cleanNavPath);
+        if (!navMatch || navMatch.entry.type !== "page") {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Route not found" }));
+          return;
+        }
+
+        const fakeReq = Object.create(req) as typeof req;
+        (fakeReq as any).url = navigatePath;
+
+        const navCtx = createRequestContext({
+          req: fakeReq,
+          params: navMatch.params,
+          routeId: navMatch.entry.id,
+          mode: "production",
+          envPrefix: this.config?.env?.prefix,
+        });
+
+        const navChain = await this.loadMiddlewareChain(
+          navMatch.entry.middleware || [],
+        );
+
+        let navResponse: Response;
+        try {
+          navResponse = await runMiddleware(navChain, navCtx, async () => {
+            const entry = navMatch.entry;
+            let navData: unknown = null;
+
+            if (entry.hasLoad && entry.ssrEntry) {
+              const ssrPath = path.join(this.serverDir, entry.ssrEntry);
+              const mod = await this.importModule(ssrPath);
+              if (typeof mod.load === "function") {
+                const loadResult = await mod.load(navCtx);
+                if (loadResult instanceof Response) return loadResult;
+                navData = loadResult;
+              }
+            }
+
+            const hydrationData: Record<string, unknown> = {};
+            if (navData && typeof navData === "object") {
+              Object.assign(hydrationData, navData);
+            }
+            hydrationData.params = navMatch.params;
+
+            const clientEntry = this.manifest.base + entry.clientEntry;
+            const layoutClientEntries = entry.layoutClientEntries
+              ? entry.layoutClientEntries.map((p) => this.manifest.base + p)
+              : [];
+
+            return new Response(
+              JSON.stringify({
+                data: hydrationData,
+                clientEntry,
+                layoutClientEntries,
+                routeId: entry.id,
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+          });
+        } catch {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Internal server error" }));
+          return;
+        }
+
+        if (navResponse.status >= 300 && navResponse.status < 400) {
+          const location = navResponse.headers.get("Location") || "/";
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ redirect: location }));
+          return;
+        }
+        if (navResponse.status !== 200) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ redirect: navigatePath }));
+          return;
+        }
+
+        await this.sendWebResponse(res, navResponse);
+        return;
+      }
+
       // 1. Try serving static assets from dist/client/
       tracer?.start("static-check");
       const staticPath = path.join(this.clientDir, cleanUrl);
