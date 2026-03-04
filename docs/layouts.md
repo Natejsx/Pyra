@@ -14,7 +14,7 @@ Think of a layout like a picture frame. The frame stays the same, but the pictur
 
 ## The Root Layout
 
-Every full-stack Pyra app needs a root layout at `src/routes/layout.tsx`. This wraps every page in your entire app. It's where you put your `<html>`, `<head>`, and `<body>` tags, global navigation, and anything else that should appear on every page.
+Every full-stack Pyra app needs a root layout at `src/routes/layout.tsx`. This wraps every page in your entire app. It's where you put global navigation and anything else that should appear on every page.
 
 ```tsx
 // src/routes/layout.tsx
@@ -46,7 +46,7 @@ The key part is `{children}`. This is where the current page (or the next layout
 
 ## Creating a Layout
 
-Create a `layout.tsx` (or `layout.jsx`, `layout.ts`, `layout.js`) file in any directory under `src/routes/`. That layout automatically wraps all pages in that directory and its subdirectories.
+Create a `layout.tsx` file (or whichever extension your adapter supports) in any directory under `src/routes/`. That layout automatically wraps all pages in that directory and its subdirectories.
 
 ```
 src/routes/
@@ -227,7 +227,7 @@ The layout wraps `/users` but not `/api/users`. Middleware, on the other hand, a
 
 ## What Layouts Can't Do
 
-- **No `load()` function.** Only pages can export `load()` to fetch data. Layouts are purely structural — they receive `children` and render them. If you need data in a layout, fetch it in the page's `load()` and pass it down through props or context.
+- **No `load()` function.** Only pages can export `load()` to fetch data. Layouts are purely structural — they receive `children` and render them. If you need data in a layout, fetch it in the page's `load()` and pass it down through props or your framework's context mechanism.
 - **No `prerender`, `cache`, or `metadata` exports.** These are page-level features.
 - **No changing the layout per-request.** The layout chain is determined by the directory structure, not by runtime conditions. If you need conditional layout behavior, handle it inside the layout component itself.
 
