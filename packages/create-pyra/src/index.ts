@@ -279,13 +279,20 @@ function scaffoldTailwind(
   files.push("postcss.config.js");
 
   const cssContent = `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n`;
-  const cssDir = join(projectDir, "src");
+  const ts = lang === "typescript";
+
+  // Full-stack: place index.css alongside the layout in src/routes/ so the
+  // relative import "./index.css" in layout.tsx resolves correctly.
+  const isFullstack = appMode === "ssr";
+  const cssDir = isFullstack
+    ? join(projectDir, "src", "routes")
+    : join(projectDir, "src");
+  const cssRelPath = isFullstack ? "src/routes/index.css" : "src/index.css";
   mkdirSync(cssDir, { recursive: true });
   writeFileSync(join(cssDir, "index.css"), cssContent);
-  files.push("src/index.css");
+  files.push(cssRelPath);
 
   // Inject CSS import into the entry file
-  const ts = lang === "typescript";
   if (framework === "vanilla") {
     const ext = ts ? "ts" : "js";
     injectCSSImport(join(projectDir, "src", `index.${ext}`));
@@ -294,7 +301,9 @@ function scaffoldTailwind(
     injectCSSImport(join(projectDir, "src", `main.${jsxExt}`));
   } else {
     const jsxExt = ts ? "tsx" : "jsx";
-    injectCSSImport(join(projectDir, "src", "routes", `layout.${jsxExt}`));
+    const layoutPath = join(projectDir, "src", "routes", `layout.${jsxExt}`);
+    // Remove the template's style.css import before injecting index.css
+    replaceCSSImport(layoutPath, "./style.css", "./index.css");
   }
 
   // Update package.json with tailwind deps
@@ -321,6 +330,17 @@ function injectCSSImport(entryFilePath: string): void {
   }
 
   writeFileSync(entryFilePath, 'import "./index.css";\n' + content, "utf-8");
+}
+
+function replaceCSSImport(filePath: string, from: string, to: string): void {
+  if (!existsSync(filePath)) return;
+
+  let content = readFileSync(filePath, "utf-8");
+  // Replace both quote styles
+  content = content
+    .replace(`import '${from}';`, `import '${to}';`)
+    .replace(`import "${from}";`, `import "${to}";`);
+  writeFileSync(filePath, content, "utf-8");
 }
 
 // Display Labels
