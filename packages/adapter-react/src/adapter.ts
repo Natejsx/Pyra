@@ -72,41 +72,68 @@ export function createReactAdapter(): PyraAdapter {
     },
 
     getHydrationScript(clientEntryPath: string, containerId: string, layoutClientPaths?: string[]): string {
-      if (layoutClientPaths && layoutClientPaths.length > 0) {
-        // Generate import statements for each layout
-        const layoutImports = layoutClientPaths
-          .map((p, i) => `import Layout${i} from "${p}";`)
-          .join("\n");
+      const hasLayouts = layoutClientPaths && layoutClientPaths.length > 0;
 
-        // Build nested createElement calls: Layout0 wraps Layout1 wraps ... wraps Component
-        // Outermost first, so Layout0 is the root wrapper
-        let inner = "createElement(Component, data)";
+      const layoutImports = hasLayouts
+        ? layoutClientPaths.map((p, i) => `import Layout${i} from "${p}";`).join("\n")
+        : "";
+
+      // Build the static return expression — Component and data come from useState,
+      // layouts are stable imports (same for all navigations within this page group).
+      let returnExpr = "createElement(Component, data)";
+      if (hasLayouts) {
         for (let i = layoutClientPaths.length - 1; i >= 0; i--) {
-          inner = `createElement(Layout${i}, null, ${inner})`;
+          returnExpr = `createElement(Layout${i}, null, ${returnExpr})`;
         }
+      }
 
-        return `
+      const pageLayouts = JSON.stringify(layoutClientPaths || []);
+
+      return `
 import { hydrateRoot } from "react-dom/client";
-import { createElement } from "react";
-import Component from "${clientEntryPath}";
+import { createElement, useState, useEffect } from "react";
+import InitialComponent from "${clientEntryPath}";
 ${layoutImports}
 
 const container = document.getElementById("${containerId}");
 const dataEl = document.getElementById("__pyra_data");
-const data = dataEl ? JSON.parse(dataEl.textContent || "{}") : {};
-hydrateRoot(container, ${inner});
-`;
-      }
+const initialData = dataEl ? JSON.parse(dataEl.textContent || "{}") : {};
+const pageLayouts = ${pageLayouts};
 
-      return `
-import { hydrateRoot } from "react-dom/client";
-import { createElement } from "react";
-import Component from "${clientEntryPath}";
+function PyraApp() {
+  const [Component, setComponent] = useState(() => InitialComponent);
+  const [data, setData] = useState(initialData);
 
-const container = document.getElementById("${containerId}");
-const dataEl = document.getElementById("__pyra_data");
-const data = dataEl ? JSON.parse(dataEl.textContent || "{}") : {};
-hydrateRoot(container, createElement(Component, data));
+  useEffect(() => {
+    async function navigate(href, push = true) {
+      try {
+        const target = new URL(href, location.href);
+        if (target.origin !== location.origin) { location.href = href; return; }
+        const res = await fetch("/_pyra/navigate?path=" + encodeURIComponent(target.pathname + target.search));
+        if (!res.ok) { location.href = href; return; }
+        const nav = await res.json();
+        if (nav.redirect) { location.href = nav.redirect; return; }
+        if (JSON.stringify(nav.layoutClientEntries || []) !== JSON.stringify(pageLayouts)) {
+          location.href = href; return;
+        }
+        const mod = await import(nav.clientEntry);
+        if (push) history.pushState(null, "", href);
+        setComponent(() => mod.default);
+        setData(nav.data || {});
+        window.scrollTo(0, 0);
+      } catch { location.href = href; }
+    }
+    window.__pyra = window.__pyra || {};
+    window.__pyra.navigate = (href) => navigate(href);
+    function onPopState() { navigate(location.pathname + location.search + location.hash, false); }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  return ${returnExpr};
+}
+
+hydrateRoot(container, createElement(PyraApp, null));
 `;
     },
 
