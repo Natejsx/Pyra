@@ -105,8 +105,11 @@ function PyraApp() {
   const [data, setData] = useState(initialData);
 
   useEffect(() => {
+    window.__pyra = window.__pyra || {};
+    window.__pyra.params = initialData.params || {};
     async function navigate(href, push = true) {
       try {
+        window.dispatchEvent(new Event("pyra:navigate-start"));
         const target = new URL(href, location.href);
         if (target.origin !== location.origin) { location.href = href; return; }
         const res = await fetch("/_pyra/navigate?path=" + encodeURIComponent(target.pathname + target.search));
@@ -118,13 +121,16 @@ function PyraApp() {
         }
         const mod = await import(nav.clientEntry);
         if (push) history.pushState(null, "", href);
+        window.__pyra.params = nav.data?.params || {};
         setComponent(() => mod.default);
         setData(nav.data || {});
         window.scrollTo(0, 0);
         window.dispatchEvent(new Event("pyra:navigate"));
-      } catch { location.href = href; }
+      } catch {
+        window.dispatchEvent(new Event("pyra:navigate-error"));
+        location.href = href;
+      }
     }
-    window.__pyra = window.__pyra || {};
     window.__pyra.navigate = (href) => navigate(href);
     function onPopState() { navigate(location.pathname + location.search + location.hash, false); }
     window.addEventListener("popstate", onPopState);
