@@ -1,0 +1,264 @@
+# Deployment
+
+Pyra is a full-stack framework. When you run `pyra build`, it produces two output trees:
+
+- `dist/client/` -- hashed static assets (JS bundles, CSS, images) served directly to the browser
+- `dist/server/` -- SSR modules that run on Node.js to render pages on request
+- `dist/manifest.json` -- the route manifest that ties everything together
+
+To serve a full-stack Pyra app in production, you need a Node.js process running `pyra start`. That process handles SSR, API routes, middleware, static asset serving, and client-side navigation responses all in one.
+
+---
+
+## Building for Production
+
+```bash
+pyra build
+```
+
+This compiles both client and server bundles, extracts CSS, hashes assets, and writes the manifest. The output goes to `dist/` by default.
+
+To start the production server locally:
+
+```bash
+pyra start
+```
+
+By default it listens on port 3000. Pass `--port` to change it:
+
+```bash
+pyra start --port 8080
+```
+
+---
+
+## Environment Variables
+
+Set environment variables before starting the server. Pyra exposes variables prefixed with `PYRA_` to your `load()` functions and middleware via `context.env`.
+
+```bash
+PYRA_DATABASE_URL=postgres://... pyra start
+```
+
+In production, set these through your platform's environment variable UI or a secrets manager -- never commit them to your repository.
+
+See the [Environment Variables docs](./env.md) for full details.
+
+---
+
+## Deploying to a VPS or Cloud VM
+
+This is the most straightforward approach. You get a Linux server (DigitalOcean, Linode, AWS EC2, Hetzner, etc.), copy your build output, and run the Node.js process.
+
+**1. Build locally and copy to the server:**
+
+```bash
+pyra build
+rsync -av dist/ user@your-server:/app/dist/
+rsync -av package.json user@your-server:/app/
+```
+
+Or set up a CI pipeline to do this automatically (see the [CI/CD docs](./ci-cd.mdx)).
+
+**2. Install production dependencies on the server:**
+
+```bash
+npm install --omit=dev
+```
+
+**3. Start the server with PM2 for process management:**
+
+```bash
+npm install -g pm2
+pm2 start "pyra start --port 3000" --name my-app
+pm2 save
+pm2 startup
+```
+
+PM2 keeps the process alive across crashes and restarts it on reboot.
+
+**4. Put Nginx in front for TLS and compression:**
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name yourdomain.com;
+
+  ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+
+  location / {
+    proxy_pass http://localhost:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+Use [Certbot](https://certbot.eff.org/) to provision a free TLS certificate from Let's Encrypt.
+
+---
+
+## Deploying with Docker
+
+Docker is a good fit for Pyra because you can build the image once and run it anywhere.
+
+**Dockerfile:**
+
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npx pyra build
+
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install --omit=dev
+COPY --from=builder /app/dist ./dist
+EXPOSE 3000
+CMD ["npx", "pyra", "start", "--port", "3000"]
+```
+
+**Build and run:**
+
+```bash
+docker build -t my-pyra-app .
+docker run -p 3000:3000 --env PYRA_DATABASE_URL=... my-pyra-app
+```
+
+Push the image to a registry (Docker Hub, GHCR, ECR) and pull it from any host that runs containers.
+
+---
+
+## Deploying to Railway
+
+[Railway](https://railway.app) is a good option for Node.js apps with zero server configuration.
+
+1. Connect your GitHub repo in the Railway dashboard
+2. Railway detects Node.js automatically
+3. Set your build command to `pyra build` and start command to `pyra start`
+4. Add environment variables in the Railway dashboard
+5. Deploy -- Railway provisions a domain with TLS automatically
+
+---
+
+## Deploying to Render
+
+[Render](https://render.com) works the same way.
+
+1. Create a new **Web Service** and connect your repo
+2. Set **Build Command** to `pyra build`
+3. Set **Start Command** to `pyra start`
+4. Set environment variables under the service settings
+5. Render gives you a `*.onrender.com` subdomain with TLS on the free tier
+
+---
+
+## Deploying to Fly.io
+
+[Fly.io](https://fly.io) runs your Docker container close to your users.
+
+```bash
+fly launch
+```
+
+This detects your Dockerfile and creates a `fly.toml`. Set secrets for your environment variables:
+
+```bash
+fly secrets set PYRA_DATABASE_URL=postgres://...
+```
+
+Then deploy:
+
+```bash
+fly deploy
+```
+
+---
+
+## Deploying to Netlify / Vercel / Cloudflare Pages
+
+> **Important:** These platforms are edge/serverless hosting providers. Pyra's production server (`pyra start`) runs as a standard long-lived Node.js process, which is not the same as a serverless function. Full-stack Pyra apps with API routes and SSR do not deploy to these platforms without a platform-specific serverless adapter, which Pyra does not currently provide.
+
+If you are building a **fully prerendered** (SSG) site where every page exports `prerender: true`, the `dist/client/` output is plain static HTML and can be deployed to any of these platforms. See the [Static Deployment](#static-and-spa-deployment) section below.
+
+---
+
+## Static and SPA Deployment
+
+If your project does not need a running server -- either because all pages are prerendered or because you are building a client-side SPA (`adapter: false` in your config) -- you can deploy the static output to any CDN or static host.
+
+### Fully Prerendered (SSG)
+
+If every route in your app exports `prerender: true` (or `prerender: { paths() { ... } }`), Pyra writes fully rendered HTML files into `dist/client/`. No Node.js process is needed at runtime.
+
+```bash
+pyra build
+# deploy dist/client/ to any static host
+```
+
+### SPA Mode
+
+If you set `adapter: false` in `pyra.config.ts`, Pyra skips SSR entirely and outputs a client-only bundle. API routes are not available in this mode.
+
+In both cases, configure your host to serve `index.html` for all routes (the common SPA fallback setting).
+
+**Netlify:**
+
+Build command: `pyra build`
+Publish directory: `dist/client`
+
+Add a `_redirects` file to `public/`:
+```
+/* /index.html 200
+```
+
+**Vercel:**
+
+Build command: `pyra build`
+Output directory: `dist/client`
+
+Add a `vercel.json`:
+```json
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
+```
+
+**Cloudflare Pages:**
+
+Build command: `pyra build`
+Build output directory: `dist/client`
+
+Configure the Pages project to use a single-page app rewrite in the dashboard.
+
+**Firebase Hosting:**
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase init hosting
+```
+
+When prompted, set the public directory to `dist/client` and enable single-page app rewrites. Then:
+
+```bash
+pyra build
+firebase deploy
+```
+
+---
+
+## Production Checklist
+
+- Set all `PYRA_` environment variables on the server before starting
+- Run `pyra build` in CI, not on the production server
+- Use a process manager (PM2, systemd, Docker) so the server restarts on crash
+- Put a reverse proxy (Nginx, Caddy) in front for TLS termination and HTTP/2
+- Serve `dist/client/` assets with a long `Cache-Control: max-age` -- Pyra hashes all asset filenames so stale cache is never an issue
+- Set `NODE_ENV=production` if your dependencies or middleware check it
