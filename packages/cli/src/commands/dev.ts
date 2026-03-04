@@ -1,7 +1,6 @@
 import path from "node:path";
 import { log, loadConfig, getPort, findAvailablePort } from "@pyra-js/shared";
 import { DevServer } from "@pyra-js/core";
-import { createReactAdapter } from "@pyra-js/adapter-react";
 import { getVersion } from "../utils/reporter.js";
 import { printDevBanner, detectCapabilities } from "../utils/dev-banner.js";
 import { setupKeyboardShortcuts } from "../utils/keyboard.js";
@@ -30,7 +29,13 @@ export async function devCommand(options: DevOptions): Promise<void> {
     requestedPort = options.port ? parseInt(options.port, 10) : getPort(config);
 
     const root = config.root || process.cwd();
-    const adapter = createReactAdapter();
+
+    if (!config.adapter) {
+      log.error("No adapter configured. Add an adapter to your pyra.config.ts, e.g.:\n\n  import { createReactAdapter } from '@pyra-js/adapter-react';\n  export default defineConfig({ adapter: createReactAdapter() });");
+      process.exit(1);
+    }
+
+    const adapter = config.adapter;
     const routesDir = path.resolve(root, config.routesDir || "src/routes");
 
     const actualPort = await findAvailablePort(requestedPort);
