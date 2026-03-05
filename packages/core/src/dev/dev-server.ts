@@ -740,6 +740,34 @@ export class DevServer
     });
   }
 
+  /**
+   * Lazily bundle react-refresh/runtime to ESM and cache the result.
+   * Resolves the package from the user's project root so it works regardless
+   * of where @pyra-js/adapter-react places its node_modules.
+   * Returns null if react-refresh is not installed.
+   */
+  private async getRefreshRuntimeCode(): Promise<string | null> {
+    if (this._refreshRuntimeCode !== undefined) return this._refreshRuntimeCode;
+    try {
+      const { createRequire } = await import("node:module");
+      const esbuild = await import("esbuild");
+      const req = createRequire(path.join(this.root, "__pyra_placeholder.js"));
+      const runtimePath = req.resolve("react-refresh/runtime");
+      const result = await esbuild.build({
+        entryPoints: [runtimePath],
+        bundle: true,
+        write: false,
+        format: "esm",
+        platform: "browser",
+        logLevel: "silent",
+      });
+      this._refreshRuntimeCode = result.outputFiles[0]?.text ?? null;
+    } catch {
+      this._refreshRuntimeCode = null;
+    }
+    return this._refreshRuntimeCode;
+  }
+
   async stop(): Promise<void> {
     return new Promise((resolve) => {
       this.clients.forEach((client) => client.close());
