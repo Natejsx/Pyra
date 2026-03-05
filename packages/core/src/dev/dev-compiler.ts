@@ -65,13 +65,10 @@ export async function compileForServer(
     target: "es2020",
     jsx: "automatic",
     jsxImportSource: "react",
-    // React stays external — resolved from node_modules when we import()
-    external: [
-      "react",
-      "react-dom",
-      "react/jsx-runtime",
-      "react/jsx-dev-runtime",
-    ],
+    // All node_modules packages stay external — they are available at runtime
+    // when the compiled file is import()-ed. Bundling them is unnecessary and
+    // can break packages that rely on Node.js built-ins (e.g. @babel/core).
+    packages: "external",
     sourcemap: "inline",
     logLevel: "silent",
     absWorkingDir: host.root,
