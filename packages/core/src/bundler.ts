@@ -109,6 +109,12 @@ export async function bundleFile(
       target: 'es2020',
       platform: 'browser',
       sourcemap: 'inline',
+      // Node.js-only packages used by adapter internals (e.g. the React Fast
+      // Refresh esbuild plugin) must never be bundled for the browser. Marking
+      // them external prevents esbuild from following their import chains and
+      // failing on packages like @babel/preset-typescript that aren't installed
+      // in every user project.
+      external: ['@babel/core', 'esbuild', 'react-refresh', 'react-refresh/babel'],
       plugins: [...extraPlugins, getPostCSSPlugin(root)],
       loader: {
         '.ts': 'ts',
