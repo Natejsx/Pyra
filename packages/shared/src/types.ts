@@ -433,6 +433,15 @@ export interface PyraAdapter {
    * If not provided, core uses a sensible default.
    */
   getDocumentShell?(): string;
+
+  /**
+   * Return a full `<script type="module">` HTML tag that initialises the
+   * framework's HMR runtime (e.g. React Fast Refresh) in the browser.
+   * Injected into every dev-mode page BEFORE the hydration script so that
+   * `$RefreshReg$` / `$RefreshSig$` globals are available when component
+   * modules execute.
+   */
+  getHMRPreamble?(): string;
 }
 
 // ─── End Adapter Types ────────────────────────────────────────────────────────
