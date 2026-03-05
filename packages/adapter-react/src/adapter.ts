@@ -161,5 +161,18 @@ hydrateRoot(container, createElement(PyraApp, null));
     getDocumentShell(): string {
       return DEFAULT_SHELL;
     },
+
+    getHMRPreamble(): string {
+      // This <script type="module"> runs BEFORE the hydration script because
+      // inline module scripts execute in document order. By the time the page
+      // bundle's $RefreshReg$ calls fire, these globals are already set.
+      return `<script type="module">
+import RefreshRuntime from '/__pyra_refresh_runtime';
+RefreshRuntime.injectIntoGlobalHook(window);
+window.$RefreshReg$ = RefreshRuntime.register.bind(RefreshRuntime);
+window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+window.__pyra_refresh = RefreshRuntime;
+</script>`;
+    },
   };
 }
