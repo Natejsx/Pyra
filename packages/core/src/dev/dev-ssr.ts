@@ -140,13 +140,14 @@ export async function handlePageRouteInner(
   // any CSS they import. bundleFile stores the CSS in cssOutputCache as a
   // side-effect; we then build <link> tags so browsers get real stylesheets
   // instead of JS-injected <style> elements (which cause FOUC).
+  const adapterPlugins = host.adapter?.esbuildPlugins?.() ?? [];
   const cssLinkTags: string[] = [];
   const clientFilesForCSS = [
     ...(match.layouts ?? []).map((l) => l.filePath),
     route.filePath,
   ];
   for (const clientFile of clientFilesForCSS) {
-    await bundleFile(clientFile, host.root, host.config?.resolve);
+    await bundleFile(clientFile, host.root, host.config?.resolve, adapterPlugins);
     const css = getCSSOutput(clientFile);
     if (css) {
       const clientRelPath = path.relative(host.root, clientFile);
@@ -207,10 +208,22 @@ export async function handlePageRouteInner(
   const headContent = headTags.join("\n  ");
   html = html.replace("<!--pyra-head-->", headContent);
 
+  // Module list for the HMR client — updated on client-side navigations too.
+  // Regular (non-module) script so it runs synchronously before any deferred
+  // module scripts, making the list available when the HMR client fires.
+  const allClientModuleUrls = [...layoutClientUrls, clientModuleUrl];
+  const hmrModulesScript = `<script>window.__pyra_hmr_modules = ${JSON.stringify(allClientModuleUrls)};</script>`;
+
+  // RFR preamble: must execute before the hydration script's static imports
+  // run so $RefreshReg$ / $RefreshSig$ globals are in place.
+  const preamble = host.adapter?.getHMRPreamble?.() ?? "";
+
   const scripts = [
+    hmrModulesScript,
     dataScript,
+    preamble,
     `<script type="module">${hydrationScript}</script>`,
-  ].join("\n  ");
+  ].filter(Boolean).join("\n  ");
 
   html = injectHMRClient(html);
   html = html.replace("</body>", `  ${scripts}\n</body>`);
