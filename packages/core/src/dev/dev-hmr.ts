@@ -196,9 +196,36 @@ export function getHMRClientScript(): string {
   });
 
   ws.addEventListener('message', (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'reload') {
-      console.log('[pyra] Reloading page...');
+    const msg = JSON.parse(event.data);
+
+    if (msg.type === 'update') {
+      // React Fast Refresh: re-import all page modules with a cache-bust
+      // timestamp then call performReactRefresh() to hot-update components
+      // in place — component state is preserved.
+      (async () => {
+        const modules = window.__pyra_hmr_modules || [];
+        if (!modules.length || !window.__pyra_refresh) {
+          // No RFR support or no modules tracked — fall back to full reload.
+          window.location.reload();
+          return;
+        }
+        const t = Date.now();
+        try {
+          await Promise.all(
+            modules.map(url => import(url + '?__hmr=' + t))
+          );
+          window.__pyra_refresh.performReactRefresh();
+          console.log('[pyra] Fast Refresh \u21bb');
+        } catch (err) {
+          console.error('[pyra] Fast Refresh failed, falling back to reload', err);
+          window.location.reload();
+        }
+      })();
+      return;
+    }
+
+    if (msg.type === 'reload') {
+      console.log('[pyra] Reloading...');
       window.location.reload();
     }
   });
