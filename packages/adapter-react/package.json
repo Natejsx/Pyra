@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
-    "build": "tsup src/index.ts --dts --format esm --out-dir dist",
+    "build": "tsup src/index.ts src/client.ts --dts --format esm --out-dir dist",
     "prepublishOnly": "pnpm build"
   },
   "keywords": [
