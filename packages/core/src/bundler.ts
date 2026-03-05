@@ -114,7 +114,16 @@ export async function bundleFile(
       // them external prevents esbuild from following their import chains and
       // failing on packages like @babel/preset-typescript that aren't installed
       // in every user project.
-      external: ['@babel/core', 'esbuild', 'react-refresh', 'react-refresh/babel'],
+      // Node.js built-ins (path, fs, module) are also listed here as a defensive
+      // fallback: older adapter builds without the "browser" export condition may
+      // contain top-level imports of these modules. Externalising them prevents a
+      // hard build failure — esbuild's tree-shaker eliminates the dead code paths
+      // (e.g. createFastRefreshPlugin) so they never appear in the browser output.
+      external: [
+        '@babel/core', 'esbuild', 'react-refresh', 'react-refresh/babel',
+        'node:path', 'path', 'node:fs', 'node:fs/promises', 'fs', 'fs/promises',
+        'node:module', 'module', 'node:url', 'url',
+      ],
       plugins: [...extraPlugins, getPostCSSPlugin(root)],
       loader: {
         '.ts': 'ts',
