@@ -3,8 +3,6 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 
-const _require = createRequire(import.meta.url);
-
 /**
  * esbuild plugin that applies the React Fast Refresh babel transform to every
  * .tsx / .jsx / .ts / .js file outside node_modules.
@@ -19,6 +17,11 @@ const _require = createRequire(import.meta.url);
  * full-page reloads).
  */
 export function createFastRefreshPlugin(): Plugin {
+  // _require is created lazily inside this function (not at module top-level)
+  // so that this file can be imported in browser bundles without calling
+  // Node.js APIs at module evaluation time.
+  const _require = createRequire(import.meta.url);
+
   // Lazily resolved once per plugin instance.
   let transformSync: ((source: string, opts: object) => { code?: string | null } | null) | null | undefined = undefined;
   let reactRefreshBabel: unknown = undefined;
