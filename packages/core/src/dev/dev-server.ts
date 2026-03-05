@@ -324,6 +324,7 @@ export class DevServer
           absolutePath,
           this.root,
           this.config?.resolve,
+          this.adapter?.esbuildPlugins?.() ?? [],
         );
         res.writeHead(200, {
           "Content-Type": "application/javascript",
