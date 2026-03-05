@@ -33,6 +33,30 @@ export function setupWebSocket(host: HMRHost, wss: WebSocketServer): void {
   });
 }
 
+// ── canFastRefresh ────────────────────────────────────────────────────────────
+
+/**
+ * Returns true when a changed file can be updated via React Fast Refresh
+ * instead of a full page reload.
+ *
+ * Rules:
+ * - Must be a JS/TS file (CSS, JSON, images always need reload).
+ * - Server-only route files (route.*, middleware.*) run in Node — the browser
+ *   has no module to update, so they still need a full reload.
+ */
+function canFastRefresh(filePath: string, routesDir?: string): boolean {
+  if (!/\.[jt]sx?$/.test(path.extname(filePath))) return false;
+
+  if (routesDir && filePath.startsWith(routesDir)) {
+    const basename = path.basename(filePath);
+    if (basename.startsWith("route.") || basename.startsWith("middleware.")) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // ── setupFileWatcher ──────────────────────────────────────────────────────────
 
 /**
@@ -79,14 +103,19 @@ export function setupFileWatcher(host: HMRHost): void {
       }
     }
 
+    // Decide update strategy:
+    // - JS/TS files that are NOT server-only → "update" (React Fast Refresh)
+    // - Everything else (CSS, config, route.ts, middleware.ts) → "reload"
+    const hmrType = canFastRefresh(filePath, host.routesDir) ? "update" : "reload";
+
     metricsStore.addHMREvent({
-      type: "reload",
+      type: hmrType,
       file: relativePath,
       timestamp: Date.now(),
       duration: Date.now() - startTime,
     });
 
-    notifyClients(host, "reload");
+    notifyClients(host, hmrType);
   });
 
   host.watcher.on("add", async (filePath: string) => {
