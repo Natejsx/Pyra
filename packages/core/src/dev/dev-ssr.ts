@@ -268,7 +268,7 @@ export async function handlePageRouteInner(
   }
 
   // ── Buffered path (renderToHTML fallback) ─────────────────────────────────
-  const headTags: string[] = [...cssLinkTags];
+  const headTags: string[] = [...pluginHeadTags, ...cssLinkTags];
   const renderContext: RenderContext = {
     url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
     params,
