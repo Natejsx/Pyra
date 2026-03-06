@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable, PassThrough } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 import { log } from "@pyra-js/shared";
@@ -710,7 +711,86 @@ export class ProdServer {
       }
     }
 
-    // Build RenderContext
+    const shell = this.adapter.getDocumentShell?.() || DEFAULT_SHELL;
+    const shellWithId = shell.replace("__CONTAINER_ID__", this.containerId);
+    const assetTags = buildAssetTags(entry, this.manifest.base);
+
+    const hydrationData: Record<string, unknown> = {};
+    if (data && typeof data === "object") {
+      Object.assign(hydrationData, data);
+    }
+    hydrationData.params = params;
+    const serializedData = escapeJsonForScript(JSON.stringify(hydrationData));
+    const dataScript = `<script id="__pyra_data" type="application/json">${serializedData}</script>`;
+
+    const clientEntryUrl = this.manifest.base + entry.clientEntry;
+    const layoutClientUrls = entry.layoutClientEntries
+      ? entry.layoutClientEntries.map((p) => this.manifest.base + p)
+      : undefined;
+    const hydrationScript = this.adapter.getHydrationScript(
+      clientEntryUrl,
+      this.containerId,
+      layoutClientUrls,
+    );
+
+    // ── Streaming path ──────────────────────────────────────────────────────
+    if (typeof this.adapter.renderToStream === "function") {
+      tracer?.start("render", `${this.adapter.name} SSR (streaming)`);
+
+      const streamedHeadTags: string[] = [];
+      const streamRenderContext: RenderContext = {
+        url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
+        params,
+        pushHead(tag: string) {
+          streamedHeadTags.push(tag);
+        },
+        layouts: layoutComponents.length > 0 ? layoutComponents : undefined,
+      };
+
+      const outletMarker = "<!--pyra-outlet-->";
+      const outletIdx = shellWithId.indexOf(outletMarker);
+      const rawBefore = shellWithId.slice(0, outletIdx);
+      const rawAfter = shellWithId.slice(outletIdx + outletMarker.length);
+
+      const headContent =
+        assetTags.head
+          ? `${assetTags.head}`
+          : "";
+      const beforeOutlet = rawBefore.replace("<!--pyra-head-->", headContent);
+
+      const reactStream = this.adapter.renderToStream(component, data, streamRenderContext);
+      const combined = new PassThrough();
+      combined.write(beforeOutlet);
+
+      reactStream.on("data", (chunk: Buffer | string) => combined.write(chunk));
+      reactStream.on("end", () => {
+        const deferredHead = streamedHeadTags.length > 0
+          ? `<script>(function(){var d=document.createElement('div');d.innerHTML=${JSON.stringify(streamedHeadTags.join("\n"))};var nodes=Array.from(d.children);nodes.forEach(function(n){document.head.appendChild(n);});})()</script>`
+          : "";
+        const tail = rawAfter.replace(
+          "</body>",
+          `  ${dataScript}\n  ${assetTags.body}\n  <script type="module">${hydrationScript}</script>\n  ${deferredHead}\n</body>`,
+        );
+        combined.write(tail);
+        combined.end();
+        tracer?.end();
+      });
+      reactStream.on("error", (err: Error) => {
+        combined.destroy(err);
+        tracer?.endWithError(err.message);
+      });
+
+      const webStream = Readable.toWeb(combined) as ReadableStream<Uint8Array>;
+      return new Response(webStream, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html",
+          "Cache-Control": buildCacheControlHeader(entry.cache),
+        },
+      });
+    }
+
+    // ── Buffered path (renderToHTML fallback) ───────────────────────────────
     const headTags: string[] = [];
     const renderContext: RenderContext = {
       url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
@@ -722,46 +802,18 @@ export class ProdServer {
     };
 
     tracer?.start("render", `${this.adapter.name} SSR`);
-    const bodyHtml = await this.adapter.renderToHTML(
-      component,
-      data,
-      renderContext,
-    );
+    const bodyHtml = await this.adapter.renderToHTML(component, data, renderContext);
     tracer?.end();
 
     tracer?.start("inject-assets");
-    const shell = this.adapter.getDocumentShell?.() || DEFAULT_SHELL;
-    const assetTags = buildAssetTags(entry, this.manifest.base);
-
-    const hydrationData: Record<string, unknown> = {};
-    if (data && typeof data === "object") {
-      Object.assign(hydrationData, data);
-    }
-    hydrationData.params = params;
-    const serializedData = escapeJsonForScript(JSON.stringify(hydrationData));
-    const dataScript = `<script id="__pyra_data" type="application/json">${serializedData}</script>`;
-
-    // Build hydration script (with layout client paths if present)
-    const clientEntryUrl = this.manifest.base + entry.clientEntry;
-    const layoutClientUrls = entry.layoutClientEntries
-      ? entry.layoutClientEntries.map((p) => this.manifest.base + p)
-      : undefined;
-    const hydrationScript = this.adapter.getHydrationScript(
-      clientEntryUrl,
-      this.containerId,
-      layoutClientUrls,
-    );
-
-    let html = shell;
-    html = html.replace("__CONTAINER_ID__", this.containerId);
-    html = html.replace("<!--pyra-outlet-->", bodyHtml);
-
     const headContent =
       headTags.join("\n  ") +
       (headTags.length && assetTags.head ? "\n  " : "") +
       assetTags.head;
-    html = html.replace("<!--pyra-head-->", headContent);
 
+    let html = shellWithId;
+    html = html.replace("<!--pyra-outlet-->", bodyHtml);
+    html = html.replace("<!--pyra-head-->", headContent);
     html = html.replace(
       "</body>",
       `  ${dataScript}\n  ${assetTags.body}\n  <script type="module">${hydrationScript}</script>\n</body>`,
