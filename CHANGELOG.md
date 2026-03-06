@@ -5,6 +5,20 @@ All notable changes to Pyra.js are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.12] - 2026-03-05
+
+### Added
+- **Browser-safe client entry point** in `@pyra-js/adapter-react` - new `client.ts` exports only components and hooks that are safe to bundle for the browser; intentionally excludes `createReactAdapter` and `fast-refresh-plugin` which import Node.js built-ins (`path`, `fs`, `module`) that cannot be resolved in a browser bundle
+  - esbuild picks this file automatically when `platform: "browser"` is set via the `"browser"` condition in the package `exports` field
+  - `client.ts` added as a named entry point in the tsup build config so it is emitted as `client.js` in `dist/`
+
+### Fixed
+- `compileForServer` in `packages/core/src/dev/dev-compiler.ts` now correctly externalizes React - previously React was being bundled into server compilation output instead of being treated as an external peer dependency
+- `_require` in `fast-refresh-plugin.ts` is now created lazily inside the function body instead of at module scope - the file can now be imported in browser bundles without triggering a Node.js `createRequire` call at import time
+- `@babel/core` and `react-refresh/babel` added to the `external` list in `packages/core/src/bundler.ts` - these are Node.js-only packages and must not be bundled into browser output
+- Node.js built-in modules added to the `external` list in `packages/core/src/bundler.ts` as a fallback - prevents esbuild from attempting to bundle built-ins when processing files that conditionally import them
+- Image adapter test corrected to return the `pyra-react-fast-refresh` plugin from the mock adapter
+
 ## [0.27.8] - 2026-03-04
 
 ### Added
