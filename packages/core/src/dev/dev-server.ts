@@ -724,6 +724,7 @@ export class DevServer
 
       this.server.listen(this.port, () => {
         setupFileWatcher(this);
+        this._warmCompileCache();
 
         resolve({
           port: this.port,
@@ -766,6 +767,37 @@ export class DevServer
       this._refreshRuntimeCode = null;
     }
     return this._refreshRuntimeCode;
+  }
+
+  /**
+   * Pre-warm the compile caches for all page and layout routes immediately
+   * after the server starts listening. Runs as a fire-and-forget background
+   * task — the server is ready for requests immediately, and by the time the
+   * developer opens a browser tab the first-request cold-start is avoided.
+   */
+  private _warmCompileCache(): void {
+    if (!this.router || !this.adapter) return;
+
+    const adapterPlugins = this.adapter.esbuildPlugins?.() ?? [];
+    const filesToWarm: string[] = [];
+
+    for (const [, node] of this.router.nodes) {
+      if (node.type === "page" || node.type === "layout") {
+        filesToWarm.push(node.filePath);
+      }
+    }
+
+    if (filesToWarm.length === 0) return;
+
+    // Kick off server-side and client-side compilations in parallel.
+    // Promise.allSettled never rejects — individual failures are silently
+    // ignored here; they will surface naturally on the first real request.
+    void Promise.allSettled([
+      ...filesToWarm.map((f) => this.compileForServer(f)),
+      ...filesToWarm.map((f) =>
+        bundleFile(f, this.root, this.config?.resolve, adapterPlugins),
+      ),
+    ]);
   }
 
   async stop(): Promise<void> {
