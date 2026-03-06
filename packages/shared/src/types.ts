@@ -154,6 +154,12 @@ export type PyraPlugin = {
   buildStart?: () => void | Promise<void>;
   /** Called after build completes. Receives the assembled manifest (mutable) before it is written to disk. */
   buildEnd?: (ctx: { manifest: RouteManifest; outDir: string; root: string }) => void | Promise<void>;
+  /**
+   * Called on every SSR page render. Return an HTML string to inject into
+   * `<head>` before the adapter's own head tags. Useful for injecting
+   * per-render styles or scripts that must be present during SSR.
+   */
+  headInjection?: () => string;
 };
 
 /**
