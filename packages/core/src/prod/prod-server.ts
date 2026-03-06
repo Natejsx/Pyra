@@ -338,7 +338,7 @@ export class ProdServer {
       tracer?.end();
 
       if (isStaticFile) {
-        this.serveStaticFile(res, staticPath, cleanUrl);
+        this.serveStaticFile(req, res, staticPath, cleanUrl);
         return;
       }
 
@@ -530,6 +530,7 @@ export class ProdServer {
   // ── Static file serving ───────────────────────────────────────────────────
 
   private serveStaticFile(
+    req: http.IncomingMessage,
     res: http.ServerResponse,
     filePath: string,
     urlPath: string,
@@ -537,8 +538,26 @@ export class ProdServer {
     const ext = path.extname(filePath);
     const contentType = getContentType(ext);
     const cacheControl = getCacheControl(urlPath);
-
     const content = fs.readFileSync(filePath);
+
+    if (this.compress && isCompressible(contentType)) {
+      const encoding = negotiateEncoding(req);
+      if (encoding) {
+        const { data, encoding: appliedEncoding } = compressBuffer(content, encoding);
+        if (appliedEncoding) {
+          res.writeHead(200, {
+            "Content-Type": contentType,
+            "Content-Length": data.length,
+            "Cache-Control": cacheControl,
+            "Content-Encoding": appliedEncoding,
+            "Vary": "Accept-Encoding",
+          });
+          res.end(data);
+          return;
+        }
+      }
+    }
+
     res.writeHead(200, {
       "Content-Type": contentType,
       "Content-Length": content.length,
