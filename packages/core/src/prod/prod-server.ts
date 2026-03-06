@@ -779,10 +779,13 @@ export class ProdServer {
       const rawBefore = shellWithId.slice(0, outletIdx);
       const rawAfter = shellWithId.slice(outletIdx + outletMarker.length);
 
+      const pluginHeadTagsProd = (this.config?.plugins ?? [])
+        .map((p) => p.headInjection?.())
+        .filter((s): s is string => !!s);
       const headContent =
-        assetTags.head
-          ? `${assetTags.head}`
-          : "";
+        [...pluginHeadTagsProd, assetTags.head ? assetTags.head : ""]
+          .filter(Boolean)
+          .join("\n  ");
       const beforeOutlet = rawBefore.replace("<!--pyra-head-->", headContent);
 
       const reactStream = this.adapter.renderToStream(component, data, streamRenderContext);
@@ -818,7 +821,10 @@ export class ProdServer {
     }
 
     // ── Buffered path (renderToHTML fallback) ───────────────────────────────
-    const headTags: string[] = [];
+    const pluginHeadTagsBuffered = (this.config?.plugins ?? [])
+      .map((p) => p.headInjection?.())
+      .filter((s): s is string => !!s);
+    const headTags: string[] = [...pluginHeadTagsBuffered];
     const renderContext: RenderContext = {
       url: new URL(pathname, `http://${req.headers.host || "localhost"}`),
       params,
