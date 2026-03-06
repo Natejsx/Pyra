@@ -326,7 +326,7 @@ export class ProdServer {
           return;
         }
 
-        await this.sendWebResponse(res, navResponse);
+        await this.sendResponse(req, res, navResponse);
         return;
       }
 
@@ -367,9 +367,9 @@ export class ProdServer {
             statusText: notFoundResponse.statusText,
             headers,
           });
-          await this.sendWebResponse(res, tracedResponse);
+          await this.sendResponse(req, res, tracedResponse);
         } else {
-          await this.sendWebResponse(res, notFoundResponse);
+          await this.sendResponse(req, res, notFoundResponse);
         }
         return;
       }
@@ -456,9 +456,9 @@ export class ProdServer {
           statusText: response.statusText,
           headers,
         });
-        await this.sendWebResponse(res, tracedResponse);
+        await this.sendResponse(req, res, tracedResponse);
       } else {
-        await this.sendWebResponse(res, response);
+        await this.sendResponse(req, res, response);
       }
 
       for (const cookie of getSetCookieHeaders(ctx)) {
