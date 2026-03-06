@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import { Readable, PassThrough } from "node:stream";
 import { pathToFileURL } from "node:url";
 import type {
   PyraConfig,
@@ -39,6 +40,19 @@ export interface SSRHost {
   config: PyraConfig | undefined;
   /** Bound delegate — compiles a route module for server-side execution. */
   compileForServer(filePath: string): Promise<string>;
+}
+
+// ── buildDeferredHeadScript ───────────────────────────────────────────────────
+
+/**
+ * Build an inline script that moves server-collected head tags into <head> at
+ * runtime. Used in the streaming SSR path where pushHead() calls happen during
+ * React's stream render — after the <head> section has already been sent.
+ */
+function buildDeferredHeadScript(tags: string[]): string {
+  if (tags.length === 0) return "";
+  const html = JSON.stringify(tags.join("\n"));
+  return `<script>(function(){var d=document.createElement('div');d.innerHTML=${html};var nodes=Array.from(d.children);nodes.forEach(function(n){document.head.appendChild(n);});})()</script>`;
 }
 
 // ── handlePageRouteInner ──────────────────────────────────────────────────────
