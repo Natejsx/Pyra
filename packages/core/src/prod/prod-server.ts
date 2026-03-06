@@ -872,6 +872,8 @@ export class ProdServer {
 
   /**
    * Convert a Web standard Response to a Node ServerResponse.
+   * Uses Readable.fromWeb() so streaming responses are piped directly without
+   * buffering the full body in memory first.
    */
   private async sendWebResponse(
     res: http.ServerResponse,
@@ -882,8 +884,14 @@ export class ProdServer {
       res.setHeader(key, value);
     });
     if (webResponse.body) {
-      const body = await webResponse.text();
-      res.end(body);
+      const readable = Readable.fromWeb(
+        webResponse.body as import("node:stream/web").ReadableStream<Uint8Array>,
+      );
+      await new Promise<void>((resolve, reject) => {
+        readable.on("end", resolve);
+        readable.on("error", reject);
+        readable.pipe(res);
+      });
     } else {
       res.end();
     }
