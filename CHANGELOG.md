@@ -5,6 +5,42 @@ All notable changes to Pyra.js are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.6] - 2026-03-06
+
+### Added
+- **`pyraFramerMotion()` plugin** in `@pyra-js/core` - solves the Framer Motion + SSR incompatibility at the framework level
+  - Implements the new `headInjection` plugin hook to inject `<style id="__pyra_fm">[data-projection-id]{opacity:1!important;transform:none!important}</style>` into every SSR page's `<head>`, keeping all Framer Motion elements visible during SSR and before hydration regardless of their `initial` prop
+- **`<FramerMotionReady>` component** in `@pyra-js/adapter-react`, companion component for `pyraFramerMotion()`; place it in your root layout to remove the SSR override after React hydrates and Framer Motion's own `useLayoutEffect` has initialized, using `requestAnimationFrame` to ensure correct sequencing
+- **`headInjection?(): string` hook** on the `PyraPlugin` interface in `@pyra-js/shared` - allows plugins to inject arbitrary HTML into `<head>` on every SSR page render, prepended before the adapter's own head tags; wired into both the streaming and buffered render paths in the dev server (`dev-ssr.ts`) and production server (`prod/prod-server.ts`)
+- **Dev server compile cache warming** - on startup, the dev server now pre-compiles all route and layout files in the background using `Promise.allSettled`, eliminating the ~280ms cold-start delay on the first browser request
+- **SSR-safe hooks** in `@pyra-js/adapter-react` - `useLocation()`, `useParams()`, and `useRouteError()` now return safe defaults during server-side rendering instead of crashing with `window is not defined`; `useLocation()` returns `{ pathname: '/', search: '', hash: '', searchParams: new URLSearchParams() }` on the server, `useParams()` returns `{}`, and `useRouteError()` returns `null`
+
+
+## [0.30.0] - 2026-03-06
+
+### Added
+- **Streaming SSR** - pages can now stream HTML to the browser as React renders, reducing time-to-first-byte for data-heavy pages
+  - `renderToStream?(component, data, context): Readable` added to the `PyraAdapter` interface - optional; servers fall back to the existing buffered `renderToHTML()` path when not implemented
+  - React adapter implements `renderToStream()` using React 18's `renderToPipeableStream`, piping output through a Node.js `PassThrough` stream
+  - Dev server (`dev-ssr.ts`) detects `adapter.renderToStream` and takes the streaming path: sends `rawBefore` (everything up to `<!--pyra-outlet-->`) immediately, streams React output as chunks arrive, then appends hydration scripts and `rawAfter` on stream end
+  - Production server takes the same streaming path when the adapter supports it
+  - `buildDeferredHeadScript()` helper in `dev-ssr.ts` - `pushHead()` calls that happen during streaming (after `<head>` has already been sent) are collected and injected via an inline `<script>` that appends them to `document.head` at runtime
+- **Response compression** in `@pyra-js/core` - gzip compression for HTML, JSON, CSS, and JavaScript responses in the production server
+  - New `packages/core/src/prod/prod-compress.ts` - `compressResponse()` detects `Accept-Encoding: gzip`, compresses compressible content types, sets `Content-Encoding: gzip` and `Vary: Accept-Encoding` headers
+  - `compress` option added to `DevServerConfig` (default `true`) - set to `false` to disable
+  - `sendResponse()` utility in `ProdServer` - centralised helper replacing scattered `sendWebResponse()` call sites, handles both streaming and buffered responses and applies compression uniformly
+- **Test suites** across `@pyra-js/core` - new vitest suites covering previously untested subsystems
+  - `cors.test.ts` - CORS header logic for allowed origins, credentials, preflight responses, and the `origin: false` disable path
+  - `render-mode.test.ts` - `resolveRouteRenderMode()` covering SSR/SPA/SSG resolution from module exports and global config defaults
+  - `prod-assets.test.ts` - production static file serving, cache header generation for hashed vs. non-hashed assets, and 404 handling
+  - `prod-compress.test.ts` - gzip and identity response paths, `Accept-Encoding` negotiation, and compressible content-type detection
+  - `tracer.test.ts` - `RequestTracer` start/end stage lifecycle, bottleneck detection thresholds, and `Server-Timing` header format
+- **STABILITY document** (`STABILITY.md`) - documents API stability guarantees and the pre-1.0 deprecation policy
+
+### Changed
+- `prod-server.ts` refactored into the `src/prod/` directory for better code visibility - `prod-assets.ts`, `prod-matcher.ts`, `prod-html.ts`, and `prod-server.ts`; `packages/core/src/prod-server.ts` retained as a thin re-export shim so external callers require no changes
+- Streaming responses in `ProdServer` now use `Readable.fromWeb()` to pipe directly to the HTTP response without buffering the full body in memory first
+
 ## [0.27.12] - 2026-03-05
 
 ### Added
