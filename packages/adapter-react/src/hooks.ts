@@ -9,7 +9,15 @@ export interface Location {
   searchParams: URLSearchParams;
 }
 
+const SSR_LOCATION: Location = {
+  pathname: "/",
+  search: "",
+  hash: "",
+  searchParams: new URLSearchParams(),
+};
+
 function getLocation(): Location {
+  if (typeof window === "undefined") return SSR_LOCATION;
   return {
     pathname: window.location.pathname,
     search: window.location.search,
@@ -101,6 +109,7 @@ export function useSearchParams(): [URLSearchParams, SetSearchParams] {
 
 // useParams
 function getParams(): Record<string, string> {
+  if (typeof window === "undefined") return {};
   return (window as any).__pyra?.params ?? {};
 }
 
@@ -304,5 +313,6 @@ export interface RouteError {
  * }
  */
 export function useRouteError(): RouteError | null {
+  if (typeof window === "undefined") return null;
   return (window as any).__pyra?.routeError ?? null;
 }
