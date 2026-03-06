@@ -114,11 +114,13 @@ export async function loadMiddlewareChain(
 // ── sendWebResponse ───────────────────────────────────────────────────────────
 
 import http from "node:http";
+import { Readable } from "node:stream";
 
 /**
  * Send a Web standard Response through Node's ServerResponse.
- * Used when load() returns a Response (e.g. redirect) or when a route
- * handler returns one directly.
+ * Handles both buffered responses (e.g. redirects from load()) and streaming
+ * responses (e.g. from renderToStream). Uses Readable.fromWeb() so chunked
+ * transfer encoding is applied automatically for streaming bodies.
  */
 export async function sendWebResponse(
   res: http.ServerResponse,
@@ -129,8 +131,14 @@ export async function sendWebResponse(
     res.setHeader(key, value);
   });
   if (webResponse.body) {
-    const body = await webResponse.text();
-    res.end(body);
+    const readable = Readable.fromWeb(
+      webResponse.body as import("node:stream/web").ReadableStream<Uint8Array>,
+    );
+    await new Promise<void>((resolve, reject) => {
+      readable.on("end", resolve);
+      readable.on("error", reject);
+      readable.pipe(res);
+    });
   } else {
     res.end();
   }
