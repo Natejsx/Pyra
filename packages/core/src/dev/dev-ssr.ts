@@ -150,6 +150,11 @@ export async function handlePageRouteInner(
     }
   }
 
+  // Collect head HTML injected by plugins (e.g. pyraFramerMotion SSR override)
+  const pluginHeadTags = (host.config?.plugins ?? [])
+    .map((p) => p.headInjection?.())
+    .filter((s): s is string => !!s);
+
   // Eagerly compile client modules (layouts first, then the page) to extract
   // any CSS they import. bundleFile stores the CSS in cssOutputCache as a
   // side-effect; we then build <link> tags so browsers get real stylesheets
@@ -222,9 +227,10 @@ export async function handlePageRouteInner(
     const rawBefore = shellWithId.slice(0, outletIdx);
     const rawAfter = shellWithId.slice(outletIdx + outletMarker.length);
 
-    // Inject CSS links into <!--pyra-head--> and add HMR client script
+    // Inject CSS links + plugin head tags into <!--pyra-head--> and add HMR client script
+    const streamingHeadContent = [...pluginHeadTags, ...cssLinkTags].join("\n  ");
     const beforeOutlet = injectHMRClient(
-      rawBefore.replace("<!--pyra-head-->", cssLinkTags.join("\n  ")),
+      rawBefore.replace("<!--pyra-head-->", streamingHeadContent),
     );
 
     const reactStream = adapter.renderToStream(component, data, streamRenderContext);
