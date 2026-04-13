@@ -26,13 +26,13 @@
   "license": "MIT",
   "packageManager": "pnpm@10.17.1",
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.0.18",
-    "memfs": "^4.56.10",
+    "@vitest/coverage-v8": "^4.1.4",
+    "memfs": "^4.57.1",
     "@pyra-js/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
   },
   "dependencies": {
     "@types/node": "^24.10.0"
